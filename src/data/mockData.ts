@@ -25,7 +25,7 @@ export const categories: Category[] = [
 
 export const stores: Store[] = [
   { id: '1', name: 'PriceSmart', website: 'https://pricesmart.com' },
-  { id: '2', name: 'Sirena', website: 'https://sirena.com.pa' },
+  { id: '2', name: 'Sirena', website: 'https://sirena.do' },
   { id: '3', name: 'Jumbo', website: 'https://jumbo.com.do' },
   { id: '4', name: 'El Nacional', website: 'https://supermercadosnacional.com' },
   { id: '5', name: 'Amazon', website: 'https://amazon.com' }

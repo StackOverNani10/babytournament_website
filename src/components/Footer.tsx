@@ -49,8 +49,8 @@ const Footer: React.FC<FooterProps> = ({ theme = 'neutral', scrollToSection }) =
             <p className="text-sm text-gray-600">
               Comparte la emoción de la llegada de nuestro bebé y forma parte de este momento tan especial para nosotros.
             </p>
-            <div className="flex items-center space-x-2 text-sm text-gray-500">
-              <Heart className={`h-4 w-4 ${colors.icon}`} />
+            <div className="group flex items-center space-x-2 text-sm text-gray-500 cursor-pointer">
+              <Heart className={`h-4 w-4 ${colors.icon} group-hover:fill-current`} />
               <span>Hecho con amor por Nani</span>
             </div>
           </div>
@@ -109,7 +109,7 @@ const Footer: React.FC<FooterProps> = ({ theme = 'neutral', scrollToSection }) =
                 <Facebook size={20} />
               </a>
               <a 
-                href="mailto:contacto@ejemplo.com" 
+                href="mailto:longearscooper@gmail.com" 
                 className={`${colors.text} ${colors.hover} transition-colors`}
                 aria-label="Correo electrónico"
               >
@@ -121,10 +121,10 @@ const Footer: React.FC<FooterProps> = ({ theme = 'neutral', scrollToSection }) =
                 ¿Tienes alguna pregunta? Escríbenos a:
               </p>
               <a 
-                href="mailto:contacto@ejemplo.com" 
+                href="mailto:longearscooper@gmail.com" 
                 className={`text-sm font-medium ${colors.text} ${colors.hover} transition-colors`}
               >
-                contacto@ejemplo.com
+                longearscooper@gmail.com
               </a>
             </div>
           </div>

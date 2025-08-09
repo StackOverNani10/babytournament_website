@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
+import { mockEvent } from './data/mockData';
 import Layout from './components/layout/Layout';
 import EventHeader from './components/EventHeader';
 import GiftCatalog from './components/GiftCatalog';
@@ -11,6 +12,8 @@ import AdminLogin from './components/AdminLogin';
 import Button from './components/ui/Button';
 import Footer from './components/Footer';
 import { Sparkles, Users } from 'lucide-react';
+import CountdownTimer from './components/CountdownTimer';
+import ScrollIndicator from './components/ScrollIndicator';
 
 // Mover HomePage fuera del componente App para evitar re-renderizados innecesarios
 const HomePageContent: React.FC = () => {
@@ -44,7 +47,16 @@ const HomePageContent: React.FC = () => {
       <div className="space-y-16">
         <div id="inicio">
           <EventHeader event={currentEvent} theme={selectedTheme} />
+          
+          {/* Countdown Timer */}
+          <CountdownTimer 
+            targetDate={new Date(`${mockEvent.date}T${mockEvent.time}`)}
+            theme={selectedTheme}
+          />
+          <ScrollIndicator theme={selectedTheme} targetId="content" />
         </div>
+        
+        <div id="content" className="pt-4">
         
         {/* Gender Switcher */}
         <div className="flex flex-col items-center gap-4">
@@ -95,8 +107,15 @@ const HomePageContent: React.FC = () => {
           )}
         </div>
         
-        <div id="regalos">
+        {/* Espaciado entre secciones */}
+        <div className="py-8">
+          <div className="w-24 h-0.5 mx-auto"></div>
+        </div>
+        
+        {/* Gift Catalog Section */}
+        <div id="regalos" className="pt-8">
           <GiftCatalog theme={selectedTheme} />
+        </div>
         </div>
       </div>
       
