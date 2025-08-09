@@ -100,7 +100,7 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
   };
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-white border border-gray-100 transition-all duration-300 ${getShadowColor()} hover:shadow-xl hover:-translate-y-0.5`}>
+    <div className={`relative overflow-hidden mb-1 rounded-2xl bg-white border border-gray-100 transition-all duration-300 ${getShadowColor()} hover:shadow-xl hover:-translate-y-0.5`}>
       {/* Gradient Header */}
       <div className={`h-2 w-full bg-gradient-to-r ${getEventTypeColor()}`}></div>
       
