@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { ShoppingBag, Users, AlertTriangle, CheckCircle, ExternalLink } from 'lucide-react';
-import { Product } from '../types';
-import { useApp } from '../context/AppContext';
-import Button from './ui/Button';
-import Badge from './ui/Badge';
-import Card from './ui/Card';
-import ReservationModal from './ReservationModal';
+import { Product } from '../../../types';
+import { useApp } from '../../../context/AppContext';
+import Button from '../../../components/ui/Button';
+import Badge from '../../../components/ui/Badge';
+import Card from '../../../components/ui/Card';
+import ReservationModal from '../../reservation/components/ReservationModal';
 
 interface ProductCardProps {
   product: Product;

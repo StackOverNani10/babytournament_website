@@ -43,9 +43,9 @@ const ScrollIndicator: React.FC<ScrollIndicatorProps> = ({ theme, targetId = 'co
       >
         <div className="flex flex-col items-center">
           <span className="text-sm font-medium mb-1 hidden md:block">Desliza para ver más</span>
-          <div className="w-10 h-10 border-2 border-current rounded-full flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-current rounded-full flex items-center justify-center">
             <svg 
-              className="w-5 h-5" 
+              className="w-4 h-4" 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24" 
