@@ -1,78 +1,32 @@
-export type EventType = 'gender-reveal' | 'baby-shower' | 'birth';
+// Tipos de eventos
+export type {
+  EventType,
+  SectionType,
+  SectionConfig,
+  EventSections,
+  Event,
+  EventStats
+} from '../features/event/types/events';
 
-export interface Event {
-  id: string;
-  type: EventType;
-  title: string;
-  subtitle?: string;
-  date: string;
-  time?: string;
-  location: string;
-  description?: string;
-  imageUrl?: string;
-  isActive: boolean;
-  createdAt: string;
-}
+// Tipos de productos y categorías
+export type {
+  Category,
+  Store,
+  Product
+} from '../features/gifts/types/products';
 
-export interface Category {
-  id: string;
-  name: string;
-  icon: string;
-  order: number;
-}
+// Tipos de reservas
+export type {
+  GiftReservation
+} from '../features/reservation/types/reservations';
 
-export interface Store {
-  id: string;
-  name: string;
-  logo?: string;
-  website?: string;
-}
+// Tipos de predicciones
+export type {
+  GenderPrediction
+} from '../features/predictions/types/predictions';
 
-export interface Product {
-  id: string;
-  name: string;
-  categoryId: string;
-  storeId: string;
-  price: number;
-  imageUrl: string;
-  description?: string;
-  suggestedQuantity: number;
-  maxQuantity?: number;
-  eventType?: EventType[];
-  isActive: boolean;
-}
-
-export interface GiftReservation {
-  id: string;
-  eventId: string;
-  productId: string;
-  guestName: string;
-  guestEmail: string;
-  quantity: number;
-  message?: string;
-  createdAt: string;
-  status: 'reserved' | 'confirmed' | 'cancelled';
-}
-
-export interface GenderPrediction {
-  id: string;
-  eventId: string;
-  guestName: string;
-  guestEmail: string;
-  predictedGender: 'boy' | 'girl';
-  suggestedName: string;
-  message?: string;
-  predictedDate?: string; // The date when the prediction was made
-  createdAt: string;
-}
-
-export interface EventStats {
-  totalProducts: number;
-  reservedProducts: number;
-  totalInvitations: number;
-  completionPercentage: number;
-  popularProducts: Array<{
-    product: Product;
-    reservations: number;
-  }>;
-}
+// Re-exportar todo para compatibilidad con importaciones existentes
+export * from '../features/event/types/events';
+export * from '../features/gifts/types/products';
+export * from '../features/reservation/types/reservations';
+export * from '../features/predictions/types/predictions';

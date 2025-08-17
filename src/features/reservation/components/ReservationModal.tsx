@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Gift, User, Mail, MessageSquare, Check } from 'lucide-react';
-import { Product } from '../types';
-import { useApp } from '../context/AppContext';
-import Button from './ui/Button';
-import Card from './ui/Card';
+import { Product } from '../../../types';
+import { useApp } from '../../../context/AppContext';
+import Button from '../../../components/ui/Button';
+import Card from '../../../components/ui/Card';
 
 const getThemeColors = (theme: string) => {
   switch (theme) {

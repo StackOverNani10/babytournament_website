@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Store } from '../types';
-import { useApp } from '../context/AppContext';
+import { Store } from '../../../types';
+import { useApp } from '../../../context/AppContext';
 import { ChevronDown, Store as StoreIcon, X } from 'lucide-react';
 
 interface StoreFilterProps {

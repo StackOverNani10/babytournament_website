@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock } from 'lucide-react';
-import Button from './ui/Button';
-import Card from './ui/Card';
+import Button from '../../../components/ui/Button';
+import Card from '../../../components/ui/Card';
 
 interface AdminLoginProps {
   onLogin: () => void;

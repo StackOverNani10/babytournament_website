@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { X, Heart, Crown, Sparkles, User, Mail, MessageSquare } from 'lucide-react';
-import { useApp } from '../context/AppContext';
-import Button from './ui/Button';
-import Card from './ui/Card';
+import { useApp } from '../../../context/AppContext';
+import Button from '../../../components/ui/Button';
+import Card from '../../../components/ui/Card';
 
 interface PredictionModalProps {
   isOpen: boolean;
