@@ -4,9 +4,15 @@ import { Heart, Instagram, Facebook, Mail } from 'lucide-react';
 interface FooterProps {
   theme?: 'boy' | 'girl' | 'neutral';
   scrollToSection: (id: string) => void;
+  activeSections?: string[];
 }
 
-const Footer: React.FC<FooterProps> = ({ theme = 'neutral', scrollToSection }) => {
+interface SectionInfo {
+  id: string;
+  name: string;
+}
+
+const Footer: React.FC<FooterProps> = ({ theme = 'neutral', scrollToSection, activeSections = [] }) => {
   // Obtener colores según el tema
   const getThemeColors = () => {
     switch (theme) {
@@ -37,6 +43,19 @@ const Footer: React.FC<FooterProps> = ({ theme = 'neutral', scrollToSection }) =
     }
   };
 
+    // Mapeo de IDs de sección a información de visualización
+  const getSectionInfo = (sectionId: string) => {
+    const sections: Record<string, SectionInfo> = {
+      'predicciones': { id: 'predicciones', name: 'Predicciones' },
+      'regalos': { id: 'regalos', name: 'Lista de Regalos' },
+      'deseos': { id: 'deseos', name: 'Mensajes' },
+      'sorteo': { id: 'sorteo', name: 'Sorteo' },
+      'votacion-actividades': { id: 'votacion-actividades', name: 'Actividades' },
+      'informacion': { id: 'informacion', name: 'Información' }
+    };
+    return sections[sectionId];
+  };
+
   const colors = getThemeColors();
 
   return (
@@ -59,6 +78,7 @@ const Footer: React.FC<FooterProps> = ({ theme = 'neutral', scrollToSection }) =
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Enlaces Rápidos</h3>
             <ul className="space-y-2">
+              {/* Inicio siempre visible */}
               <li>
                 <button 
                   onClick={() => scrollToSection('inicio')}
@@ -67,22 +87,21 @@ const Footer: React.FC<FooterProps> = ({ theme = 'neutral', scrollToSection }) =
                   Inicio
                 </button>
               </li>
-              <li>
-                <button 
-                  onClick={() => scrollToSection('regalos')}
-                  className={`text-sm ${colors.text} hover:underline text-left`}
-                >
-                  Lista de Regalos
-                </button>
-              </li>
-              <li>
-                <button 
-                  onClick={() => scrollToSection('predicciones')}
-                  className={`text-sm ${colors.text} hover:underline text-left`}
-                >
-                  Predicciones
-                </button>
-              </li>
+              
+              {/* Secciones activas */}
+              {activeSections.map((sectionId) => {
+                const sectionInfo = getSectionInfo(sectionId);
+                return sectionInfo ? (
+                  <li key={sectionId}>
+                    <button 
+                      onClick={() => scrollToSection(sectionId)}
+                      className={`text-sm ${colors.text} hover:underline text-left capitalize`}
+                    >
+                      {sectionInfo.name}
+                    </button>
+                  </li>
+                ) : null;
+              })}
             </ul>
           </div>
 

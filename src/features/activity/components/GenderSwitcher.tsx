@@ -1,5 +1,5 @@
 import React from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../../../context/AppContext';
 
 // Extender las propiedades del botón para incluir las propiedades CSS personalizadas
 declare module 'react' {

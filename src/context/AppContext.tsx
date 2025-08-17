@@ -1,18 +1,20 @@
 import React, { createContext, useContext, ReactNode } from 'react';
 import { Event, Product, Category, Store, GiftReservation, GenderPrediction } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-import { mockEvent, products as mockProducts, categories, stores } from '../data/mockData';
+import { mockEvents, mockEvent, products as mockProducts, categories, stores } from '../data/mockData';
 
 type Theme = 'boy' | 'girl' | 'neutral';
 
 interface AppContextType {
   currentEvent: Event;
+  events: Event[];
   products: Product[];
   categories: Category[];
   stores: Store[];
   reservations: GiftReservation[];
   predictions: GenderPrediction[];
   selectedTheme: Theme;
+  theme: Theme;
   setSelectedTheme: (theme: Theme) => void;
   addReservation: (reservation: Omit<GiftReservation, 'id' | 'createdAt'>) => void;
   addPrediction: (prediction: Omit<GenderPrediction, 'id' | 'createdAt'>) => void;
@@ -20,6 +22,8 @@ interface AppContextType {
   getAvailableQuantity: (productId: string) => number;
   isProductAvailable: (productId: string) => boolean;
   getProductReservations: (productId: string) => GiftReservation[];
+  updateEvent: (id: string, updates: Partial<Event>) => void;
+  setActiveEvent: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -32,6 +36,9 @@ export function AppProvider({ children }: AppProviderProps) {
   const [reservations, setReservations] = useLocalStorage<GiftReservation[]>('gift-reservations', []);
   const [predictions, setPredictions] = useLocalStorage<GenderPrediction[]>('gender-predictions', []);
   const [selectedTheme, setSelectedTheme] = useLocalStorage<Theme>('selected-theme', 'neutral');
+  const [events, setEvents] = useLocalStorage<Event[]>('events', mockEvents);
+  
+  const currentEvent = events.find(event => event.isActive) || events[0];
 
   const addReservation = (reservation: Omit<GiftReservation, 'id' | 'createdAt'>) => {
     const newReservation: GiftReservation = {
@@ -75,14 +82,33 @@ export function AppProvider({ children }: AppProviderProps) {
     return reservations.filter(r => r.productId === productId && r.status === 'reserved');
   };
 
-  const value: AppContextType = {
-    currentEvent: mockEvent,
+  const updateEvent = (id: string, updates: Partial<Event>) => {
+    setEvents(prevEvents => 
+      prevEvents.map(event => 
+        event.id === id ? { ...event, ...updates } : event
+      )
+    );
+  };
+
+  const setActiveEvent = (id: string) => {
+    setEvents(prevEvents => 
+      prevEvents.map(event => ({
+        ...event,
+        isActive: event.id === id
+      }))
+    );
+  };
+
+  const value = {
+    currentEvent,
+    events,
     products: mockProducts,
     categories,
     stores,
     reservations,
     predictions,
     selectedTheme,
+    theme: selectedTheme, // Alias for backward compatibility
     setSelectedTheme,
     addReservation,
     addPrediction,
@@ -90,6 +116,8 @@ export function AppProvider({ children }: AppProviderProps) {
     getAvailableQuantity,
     isProductAvailable,
     getProductReservations,
+    updateEvent,
+    setActiveEvent,
   };
 
   return (

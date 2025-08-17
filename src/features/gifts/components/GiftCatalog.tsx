@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Search, Filter, ShoppingCart, Heart, DollarSign } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../../../context/AppContext';
 import ProductCard from './ProductCard';
 import CategoryFilter from './CategoryFilter';
 import StoreFilter from './StoreFilter';
-import Card from './ui/Card';
+import Card from '../../../components/ui/Card';
 
 interface GiftCatalogProps {
   theme?: 'boy' | 'girl' | 'neutral';

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Category } from '../types';
+import { Category } from '../../../types';
 import * as Icons from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../../../context/AppContext';
 
 interface CategoryFilterProps {
   categories: Category[];

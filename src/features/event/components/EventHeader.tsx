@@ -1,7 +1,7 @@
 import React from 'react';
 import { Calendar, MapPin, Clock, Share2, QrCode } from 'lucide-react';
-import { Event } from '../types';
-import Button from './ui/Button';
+import { Event } from '../../../types';
+import Button from '../../../components/ui/Button';
 
 interface EventHeaderProps {
   event: Event;

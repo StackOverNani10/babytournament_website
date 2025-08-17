@@ -1,18 +1,119 @@
 import { Event, Category, Store, Product, EventType } from '../types';
 
-export const mockEvent: Event = {
-  id: '1',
-  type: 'gender-reveal',
-  title: '¿Niño o Niña?',
-  subtitle: 'Gender Reveal de Rocío y Moisés',
-  date: '2025-09-15',
-  time: '15:00',
-  location: 'Casa de los abuelos - Av. Principal #123',
-  description: '¡La gran revelación está cerca! Únete a nosotros para descubrir si nuestro bebé será un príncipe o una princesa. Haz tu predicción, sugiere un nombre y ayúdanos a preparar todo para la llegada de nuestro pequeño tesoro.',
-  imageUrl: 'https://images.pexels.com/photos/1556652/pexels-photo-1556652.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-  isActive: true,
-  createdAt: '2025-01-01T00:00:00Z'
+import { EventSections, SectionConfig } from '../types';
+
+// Secciones por defecto para cada tipo de evento
+const defaultGenderRevealSections: EventSections = {
+  countdown: {
+    id: 'countdown' as const,
+    enabled: true,
+    title: 'Cuenta Regresiva',
+    description: 'Muestra un contador para el evento',
+    order: 1,
+    config: { showDays: true, showHours: true, showMinutes: true }
+  },
+  predictions: {
+    id: 'predictions' as const,
+    enabled: true,
+    title: 'Predicciones',
+    description: 'Permite a los invitados predecir el género del bebé',
+    order: 2,
+    config: { allowNameSuggestions: true, showPredictions: true }
+  },
+  'gift-catalog': {
+    id: 'gift-catalog' as const,
+    enabled: true,
+    title: 'Lista de Regalos',
+    description: 'Catálogo de regalos para el bebé',
+    order: 3,
+    config: { showCategories: true, showStores: true }
+  },
+  wishes: {
+    id: 'wishes' as const,
+    enabled: true,
+    title: 'Mensajes',
+    description: 'Espacio para que los invitados dejen mensajes',
+    order: 4,
+    config: { maxLength: 500 }
+  }
 };
+
+const defaultBabyShowerSections: EventSections = {
+  countdown: {
+    id: 'countdown' as const,
+    enabled: true,
+    title: 'Faltan',
+    description: 'Cuenta regresiva para el baby shower',
+    order: 1,
+    config: { showDays: true, showHours: true, showMinutes: true }
+  },
+  'gift-catalog': {
+    id: 'gift-catalog' as const,
+    enabled: true,
+    title: 'Lista de Regalos',
+    description: 'Regalos que necesitamos para el bebé',
+    order: 2,
+    config: { showCategories: true, showStores: true }
+  },
+  'activity-voting': {
+    id: 'activity-voting' as const,
+    enabled: true,
+    title: 'Votación de Actividades',
+    description: 'Vota por las actividades que te gustaría hacer en el evento',
+    order: 3,
+    config: { maxVotes: 3, showResults: true }
+  },
+  raffle: {
+    id: 'raffle' as const,
+    enabled: true,
+    title: 'Sorteo',
+    description: 'Participa en nuestro sorteo especial',
+    order: 4,
+    config: { showPrizes: true, showWinners: true }
+  },
+  wishes: {
+    id: 'wishes' as const,
+    enabled: true,
+    title: 'Dedicatorias',
+    description: 'Deja un mensaje para los futuros papás',
+    order: 5,
+    config: { maxLength: 500 }
+  }
+};
+
+export const mockEvents: Event[] = [
+  {
+    id: '1',
+    type: 'gender-reveal',
+    title: '¿Niño o Niña?',
+    subtitle: 'Gender Reveal de Rocío y Moisés',
+    date: '2025-09-15',
+    time: '15:00',
+    location: 'Casa de los abuelos - Av. Principal #123',
+    description: '¡La gran revelación está cerca! Únete a nosotros para descubrir si nuestro bebé será un príncipe o una princesa. Haz tu predicción, sugiere un nombre y ayúdanos a preparar todo para la llegada de nuestro pequeño tesoro.',
+    imageUrl: 'https://images.pexels.com/photos/1556652/pexels-photo-1556652.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+    isActive: true,
+    createdAt: '2025-01-01T00:00:00Z',
+    sections: defaultGenderRevealSections
+  },
+  {
+    id: '2',
+    type: 'baby-shower',
+    title: 'Baby Shower Especial',
+    subtitle: 'Celebrando la llegada de nuestro bebé',
+    date: '2025-10-20',
+    time: '16:00',
+    location: 'Salón de Eventos Las Gardenias',
+    description: 'Únete a nosotros para celebrar la próxima llegada de nuestro pequeño milagro. Comparte con nosotros este momento tan especial.',
+    imageUrl: 'https://images.pexels.com/photos/2253870/pexels-photo-2253870.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+    isActive: false,
+    createdAt: '2025-02-15T00:00:00Z',
+    sections: defaultBabyShowerSections
+  }
+];
+
+// For backward compatibility
+export const mockEvent = mockEvents.find(event => event.isActive) || mockEvents[0];
 
 export const categories: Category[] = [
   { id: '1', name: 'Pañales', icon: 'Baby', order: 1 },
