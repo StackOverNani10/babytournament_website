@@ -81,7 +81,7 @@ interface AppContextType {
   error: string | null;
   setSelectedTheme: (theme: Theme) => void;
   addReservation: (reservation: Omit<GiftReservation, 'id' | 'createdAt'>) => void;
-  addPrediction: (prediction: Omit<GenderPrediction, 'id' | 'createdAt'>) => Promise<GenderPrediction | null>;
+  addPrediction: (prediction: Omit<GenderPrediction, 'id' | 'createdAt' | 'guest_id'> & { guest_name: string; guest_email: string }) => Promise<GenderPrediction | null>;
   cancelReservation: (id: string) => void;
   getAvailableQuantity: (productId: string) => number;
   isProductAvailable: (productId: string) => boolean;
@@ -93,15 +93,6 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
-interface GuestData {
-  id?: string;
-  name: string;
-  email: string;
-  phone?: string;
-  event_id?: string;
-  user_id?: string;
-}
 
 interface AppProviderProps {
   children: ReactNode;
@@ -412,101 +403,76 @@ export function AppProvider({ children }: AppProviderProps) {
       
     } catch (error) {
       console.error('Error adding reservation:', error);
-      throw error; // Re-throw to be handled by the component
+      throw error;
     }
-  }, [currentEvent]);
+  }, [currentEvent, setReservations]);
 
-  const addPrediction = useCallback(async (prediction: Omit<GenderPrediction, 'id' | 'createdAt'>): Promise<GenderPrediction | null> => {
+  const addPrediction = useCallback(async (prediction: Omit<GenderPrediction, 'id' | 'createdAt' | 'guest_id'> & { guest_name: string; guest_email: string }): Promise<GenderPrediction | null> => {
+    if (!currentEvent) {
+      throw new Error('No hay un evento activo');
+    }
+
     try {
-      if (!currentEvent) {
-        throw new Error('No hay un evento activo');
-      }
-
-      // First, fetch the guest information
-      const { data: guestRecord, error: guestError } = await supabase
-        .from('guests')
-        .select('id, name, email')
-        .eq('id', prediction.guest_id)
-        .single();
-
-      if (guestError || !guestRecord) {
-        throw new Error('No se pudo encontrar la información del invitado');
-      }
-
-      // Ensure we have a valid email
-      const guestEmail = guestRecord.email?.trim().toLowerCase();
+      // Validate email first
+      const guestEmail = prediction.guest_email.trim().toLowerCase();
       if (!guestEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail)) {
         throw new Error('Por favor ingrese un correo electrónico válido');
       }
 
-      // Get the current session if it exists
-      const { data: { session } } = await supabase.auth.getSession();
+      // Check if guest exists by email and event
+      const { data: existingGuest, error: fetchError } = await supabase
+        .from('guests')
+        .select('id, name')
+        .eq('email', guestEmail)
+        .eq('event_id', currentEvent.id)
+        .maybeSingle();
 
-      // Create the guest data with required fields
-      const guestData: GuestData = {
-        id: guestRecord.id,
-        name: guestRecord.name.trim(),
-        event_id: currentEvent.id.toString(),
-        email: guestEmail,
-        phone: ''
-      };
-
-      // Only add user_id if user is authenticated
-      if (session?.user?.id) {
-        guestData.user_id = session.user.id;
-      }
-
-      console.log('Checking for existing guest with email:', guestEmail);
-
-      let guest;
-      try {
-        // First, try to find an existing guest with the same email
-        const { data: existingGuest, error: findError } = await supabase
+      let guestId = existingGuest?.id;
+      
+      // If guest doesn't exist, create a new one
+      if (!existingGuest || fetchError) {
+        const { data: newGuest, error: createError } = await supabase
           .from('guests')
-          .select('*')
-          .eq('email', guestEmail)
-          .eq('event_id', currentEvent.id.toString())
-          .maybeSingle();
+          .insert([
+            {
+              name: prediction.guest_name.trim(),
+              email: guestEmail,
+              event_id: currentEvent.id,
+            },
+          ])
+          .select('id, name')
+          .single();
 
-        if (findError) throw findError;
-
-        if (existingGuest) {
-          console.log('Found existing guest:', existingGuest);
-          guest = existingGuest;
-        } else {
-          // If no existing guest, create a new one
-          console.log('Creating new guest with data:', JSON.stringify(guestData, null, 2));
-
-          const { data: newGuest, error: createError } = await supabase
-            .from('guests')
-            .insert(guestData)
-            .select()
-            .single();
-
-          if (createError) throw createError;
-
-          guest = newGuest;
-          console.log('Guest created successfully:', guest);
+        if (createError || !newGuest) {
+          throw new Error('Error al crear el invitado: ' + (createError?.message || 'Error desconocido'));
         }
-      } catch (error: any) {
-        console.error('Error managing guest:', error);
-        if (error?.details) {
-          console.error('Database error details:', error.details);
-        }
-        throw new Error(error.message || 'Error al gestionar el invitado');
+        
+        guestId = newGuest.id;
       }
 
-      if (!guest?.id) {
+      if (!guestId) {
         throw new Error('No se pudo obtener el ID del invitado');
       }
 
-      // Check if guest already has a prediction for this event by guest_id
+      // Check if guest already has a prediction for this event
       const existingPrediction = predictions.find(
-        p => p.guest_id === guest?.id && p.event_id === currentEvent.id
+        p => p.guest_id === guestId && p.event_id === currentEvent.id
       );
 
-      // If prediction exists, confirm before updating
+      // Create the prediction data
+      const predictionData = {
+        event_id: currentEvent.id,
+        guest_id: guestId,
+        prediction: prediction.prediction,
+        name_suggestion: prediction.name_suggestion?.trim() || '',
+        message: prediction.message?.trim() || '',
+        created_at: new Date().toISOString()
+      };
+
+      let result;
+
       if (existingPrediction) {
+        // Show confirmation dialog for update
         const currentGender = existingPrediction.prediction === 'boy' ? 'Niño 👶' : 'Niña 👧';
         const newGender = prediction.prediction === 'boy' ? 'Niño 👶' : 'Niña 👧';
 
@@ -525,91 +491,58 @@ export function AppProvider({ children }: AppProviderProps) {
           '(La predicción anterior será reemplazada)'
         ].join('\n');
 
-        try {
-          const updateData = {
-            prediction: prediction.prediction,
-            name_suggestion: prediction.name_suggestion?.trim() || null,
-            message: prediction.message?.trim() || null,
-            updated_at: new Date().toISOString()
-          };
+        const confirmed = await showConfirmDialog(
+          'Actualizar predicción',
+          message,
+          async () => {
+            const updateData = {
+              ...predictionData,
+              updated_at: new Date().toISOString()
+            };
+            
+            const { data: updatedPrediction, error: updateError } = await supabase
+              .from('predictions')
+              .update(updateData)
+              .eq('id', existingPrediction.id)
+              .select()
+              .single();
 
-          console.log('Updating prediction with data:', JSON.stringify(updateData, null, 2));
-
-          // Show confirmation dialog and wait for user's response
-          const confirmed = await showConfirmDialog<boolean>(
-            'Actualizar predicción',
-            message,
-            async () => {
-              // This function only runs if user confirms
-              try {
-                // Update the prediction in the database
-                await dataService.update('predictions', existingPrediction.id, updateData, { validate: true });
-
-                // Update local state
-                setPredictions(prev =>
-                  prev.map(p =>
-                    p.id === existingPrediction.id
-                      ? {
-                        ...p,
-                        prediction: updateData.prediction,
-                        name_suggestion: updateData.name_suggestion || '',
-                        message: updateData.message || ''
-                      }
-                      : p
-                  )
-                );
-                return true; // Indicate success
-              } catch (error) {
-                console.error('Error updating prediction:', error);
-                throw error; // This will be caught by showConfirmDialog
-              }
+            if (updateError || !updatedPrediction) {
+              throw new Error('Error al actualizar la predicción: ' + (updateError?.message || 'Error desconocido'));
             }
-          );
-
-          // If user cancelled, return the existing prediction
-          if (confirmed === false) {
-            return existingPrediction;
+            return updatedPrediction;
           }
+        );
 
-          // If we get here, the update was successful
-          return null;
-        } catch (error) {
-          console.error('Error in prediction update process:', error);
-          throw error;
-        }
-      }
-
-      // If no existing prediction, create a new one
-      try {
-        // Create the prediction with the guest's ID
-        const predictionData = {
-          event_id: currentEvent.id,
-          guest_id: guest.id,
-          prediction: prediction.prediction,
-          name_suggestion: prediction.name_suggestion?.trim() || null,
-          message: prediction.message?.trim() || null,
-          created_at: new Date().toISOString()
-        };
-
-        console.log('Creating prediction with data:', JSON.stringify(predictionData, null, 2));
-
-        const dbPrediction = await dataService.create('predictions', predictionData, { validate: true });
-
-        if (!dbPrediction) {
-          throw new Error('No se pudo crear la predicción');
+        if (!confirmed) {
+          return existingPrediction;
         }
 
-        // Map the database prediction to the app's format
-        const newPrediction = await mapDbPredictionToAppPrediction(dbPrediction);
+        // Update local state
+        setPredictions(prev =>
+          prev.map(p =>
+            p.id === existingPrediction.id ? { ...p, ...predictionData } : p
+          )
+        );
+        result = { ...existingPrediction, ...predictionData };
+      } else {
+        // Create new prediction
+        const { data: newPrediction, error: predictionError } = await supabase
+          .from('predictions')
+          .insert(predictionData)
+          .select()
+          .single();
 
-        // Update the predictions state
-        setPredictions(prev => [...prev, newPrediction]);
+        if (predictionError || !newPrediction) {
+          throw new Error('Error al guardar la predicción: ' + (predictionError?.message || 'Error desconocido'));
+        }
 
-        return newPrediction;
-      } catch (error) {
-        console.error('Error creating new prediction:', error);
-        throw error;
+        // Update local state
+        setPredictions(prev => [...prev, newPrediction as GenderPrediction]);
+        result = newPrediction;
       }
+
+      return result as GenderPrediction;
     } catch (error) {
       console.error('Error adding prediction:', error);
       const errorMessage = error instanceof Error ? error.message : 'No se pudo guardar la predicción';
