@@ -26,10 +26,10 @@ const ActivityVoting: React.FC<ActivityVotingProps> = ({ theme }) => {
     { id: '4', name: 'Consejos para Padres', description: 'Comparte tus mejores consejos' },
   ];
   
-  const activities: Activity[] = (currentEvent.sections?.['activity-voting']?.config as any)?.activities || defaultActivities;
+  const activities: Activity[] = (currentEvent?.sections?.['activity-voting']?.config as any)?.activities || defaultActivities;
 
   // Get max votes allowed from config or default to 3
-  const maxVotes: number = (currentEvent.sections?.['activity-voting']?.config?.maxVotes as number) ?? 3;
+  const maxVotes: number = (currentEvent?.sections?.['activity-voting']?.config?.maxVotes as number) ?? 3;
 
   const toggleActivity = (activityId: string) => {
     if (hasVoted) return;

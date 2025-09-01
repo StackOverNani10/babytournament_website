@@ -19,10 +19,11 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
 
   // Filter products based on event type
   const eventProducts = useMemo(() => {
+    if (!currentEvent) return []; // Return empty array if no current event
     return products.filter(product =>
       !product.eventType || product.eventType.includes(currentEvent.type)
     );
-  }, [products, currentEvent.type]);
+  }, [products, currentEvent]);
 
   // Calculate max price
   const maxPrice = useMemo(() =>
@@ -179,8 +180,8 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
               {showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
               {(selectedCategory !== 'all' || selectedStore !== 'all') && (
                 <span className={`ml-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium ${theme === 'boy' ? 'bg-blue-100 text-blue-800' :
-                    theme === 'girl' ? 'bg-pink-100 text-pink-800' :
-                      'bg-yellow-100 text-yellow-800'
+                  theme === 'girl' ? 'bg-pink-100 text-pink-800' :
+                    'bg-yellow-100 text-yellow-800'
                   }`}>
                   !
                 </span>
@@ -193,16 +194,16 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
                 type="button"
                 onClick={() => setShowSortDropdown(!showSortDropdown)}
                 className={`w-full flex items-center justify-between px-4 py-3 bg-white rounded-xl border-2 focus:outline-none transition-all duration-200 ${theme === 'boy'
-                    ? 'border-blue-200 hover:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-blue-700'
-                    : theme === 'girl'
-                      ? 'border-pink-200 hover:bg-pink-50 focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 text-pink-700'
-                      : 'border-yellow-200 hover:bg-yellow-50 focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 text-yellow-700'
+                  ? 'border-blue-200 hover:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-blue-700'
+                  : theme === 'girl'
+                    ? 'border-pink-200 hover:bg-pink-50 focus:ring-2 focus:ring-pink-500 focus:ring-offset-2 text-pink-700'
+                    : 'border-yellow-200 hover:bg-yellow-50 focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 text-yellow-700'
                   }`}
               >
                 <div className="flex items-center space-x-3">
                   <svg className={`w-5 h-5 ${theme === 'boy' ? 'text-blue-500' :
-                      theme === 'girl' ? 'text-pink-500' :
-                        'text-yellow-500'
+                    theme === 'girl' ? 'text-pink-500' :
+                      'text-yellow-500'
                     }`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
                   </svg>
@@ -229,10 +230,10 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
               {/* Dropdown Menu */}
               {showSortDropdown && (
                 <div className={`absolute z-10 mt-1 w-full bg-white shadow-lg rounded-xl border-2 overflow-hidden ${theme === 'boy'
-                    ? 'border-blue-200 ring-2 ring-blue-500 ring-opacity-50'
-                    : theme === 'girl'
-                      ? 'border-pink-200 ring-2 ring-pink-500 ring-opacity-50'
-                      : 'border-yellow-200 ring-2 ring-yellow-500 ring-opacity-50'
+                  ? 'border-blue-200 ring-2 ring-blue-500 ring-opacity-50'
+                  : theme === 'girl'
+                    ? 'border-pink-200 ring-2 ring-pink-500 ring-opacity-50'
+                    : 'border-yellow-200 ring-2 ring-yellow-500 ring-opacity-50'
                   }`}>
                   {[
                     { value: 'name', label: 'Ordenar por: Nombre' },
@@ -247,12 +248,12 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
                         setShowSortDropdown(false);
                       }}
                       className={`w-full text-left px-4 py-3 text-sm transition-colors duration-200 ${sortBy === option.value
-                          ? theme === 'boy'
-                            ? 'bg-blue-50 text-blue-700 font-medium'
-                            : theme === 'girl'
-                              ? 'bg-pink-50 text-pink-700 font-medium'
-                              : 'bg-yellow-50 text-yellow-700 font-medium'
-                          : 'text-gray-700 hover:bg-gray-50'
+                        ? theme === 'boy'
+                          ? 'bg-blue-50 text-blue-700 font-medium'
+                          : theme === 'girl'
+                            ? 'bg-pink-50 text-pink-700 font-medium'
+                            : 'bg-yellow-50 text-yellow-700 font-medium'
+                        : 'text-gray-700 hover:bg-gray-50'
                         }`}
                     >
                       {option.label}
@@ -308,8 +309,8 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
                         theme === 'girl' ? '#db2777' :
                           '#b45309',
                       border: `1px solid ${theme === 'boy' ? 'rgba(37, 99, 235, 0.2)' :
-                          theme === 'girl' ? 'rgba(236, 72, 153, 0.2)' :
-                            'rgba(234, 179, 8, 0.2)'
+                        theme === 'girl' ? 'rgba(236, 72, 153, 0.2)' :
+                          'rgba(234, 179, 8, 0.2)'
                         }`
                     }}>
                     <DollarSign size={12} />
@@ -329,8 +330,8 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
                     {/* Track */}
                     <div
                       className={`h-2.5 rounded-full transition-colors duration-200 ${theme === 'boy' ? 'bg-blue-100' :
-                          theme === 'girl' ? 'bg-pink-100' :
-                            'bg-yellow-100'
+                        theme === 'girl' ? 'bg-pink-100' :
+                          'bg-yellow-100'
                         }`}
                       style={{
                         position: 'relative',
@@ -344,8 +345,8 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
                       {/* Progress */}
                       <div
                         className={`absolute top-0 h-full rounded-full ${theme === 'boy' ? 'bg-blue-500' :
-                            theme === 'girl' ? 'bg-pink-500' :
-                              'bg-yellow-500'
+                          theme === 'girl' ? 'bg-pink-500' :
+                            'bg-yellow-500'
                           }`}
                         style={{
                           width: `${(priceRange[1] / maxPrice) * 100}%`,

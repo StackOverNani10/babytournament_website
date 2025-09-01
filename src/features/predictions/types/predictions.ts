@@ -1,11 +1,9 @@
 export interface GenderPrediction {
   id: string;
-  eventId: string;
-  guestName: string;
-  guestEmail: string;
-  predictedGender: 'boy' | 'girl';
-  suggestedName: string;
-  message?: string;
-  predictedDate?: string; // Fecha de la predicción
-  createdAt: string;
+  event_id: string;
+  guest_id: string;
+  prediction: 'boy' | 'girl';
+  name_suggestion: string;
+  created_at: string;
+  message?: string | null;
 }

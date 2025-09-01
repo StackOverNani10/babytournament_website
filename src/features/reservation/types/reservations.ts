@@ -1,5 +1,7 @@
 import { Product } from '../../gifts/types/products';
 
+export type ReservationStatus = 'reserved' | 'confirmed' | 'cancelled' | 'pending';
+
 export interface GiftReservation {
   id: string;
   eventId: string;
@@ -9,6 +11,7 @@ export interface GiftReservation {
   quantity: number;
   message?: string;
   createdAt: string;
-  status: 'reserved' | 'confirmed' | 'cancelled';
+  updatedAt: string;
+  status: ReservationStatus;
   product?: Product; // Relación opcional para cuando se necesite el producto completo
 }

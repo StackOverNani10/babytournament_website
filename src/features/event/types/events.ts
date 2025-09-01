@@ -25,11 +25,11 @@ export interface Event {
   id: string;
   type: EventType;
   title: string;
-  subtitle?: string;
+  subtitle: string | null;
   date: string;
-  time?: string;
+  time: string | null;
   location: string;
-  description?: string;
+  description: string | null;
   imageUrl?: string;
   isActive: boolean;
   createdAt: string;

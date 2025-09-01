@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Gift, User, Mail, MessageSquare, Check } from 'lucide-react';
+import { X, Gift, User, Mail, Check } from 'lucide-react';
 import { Product } from '../../../types';
 import { useApp } from '../../../context/AppContext';
 import Button from '../../../components/ui/Button';
@@ -59,11 +59,12 @@ interface ReservationModalProps {
 }
 
 const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, maxQuantity }) => {
-  const { selectedTheme, addReservation, currentEvent, stores } = useApp();
+  const { selectedTheme, addReservation, currentEvent, stores: allStores } = useApp();
   const theme = selectedTheme || 'neutral';
   const themeColors = getThemeColors(theme);
   const [isQuantityOpen, setIsQuantityOpen] = useState(false);
   const quantityRef = useRef<HTMLDivElement>(null);
+  const store = allStores.find(s => s.id === product.storeId);
   
   // Cerrar el menú al hacer clic o tocar fuera
   useEffect(() => {
@@ -93,36 +94,62 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
   const [formData, setFormData] = useState({
     guestName: '',
     guestEmail: '',
-    quantity: 1,
-    message: ''
+    quantity: 1
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-
-  const store = stores.find(s => s.id === product.storeId);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     
-    if (!formData.guestName.trim() || !formData.guestEmail.trim()) {
-      alert('Por favor completa todos los campos requeridos');
+    // Check if we have a current event
+    if (!currentEvent) {
+      setError('No hay un evento activo. Por favor, actualiza la página e intenta de nuevo.');
+      return;
+    }
+    
+    // Basic validation
+    if (!formData.guestName.trim()) {
+      setError('Por favor ingresa tu nombre');
+      return;
+    }
+    
+    if (!formData.guestEmail.trim()) {
+      setError('Por favor ingresa tu correo electrónico');
+      return;
+    }
+    
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.guestEmail.trim())) {
+      setError('Por favor ingresa un correo electrónico válido');
+      return;
+    }
+    
+    if (formData.quantity < 1) {
+      setError('La cantidad debe ser al menos 1');
+      return;
+    }
+    
+    if (formData.quantity > maxQuantity) {
+      setError(`No hay suficiente disponibilidad. Máximo disponible: ${maxQuantity}`);
       return;
     }
 
     setIsSubmitting(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-      
-      addReservation({
+      const reservationData = {
         eventId: currentEvent.id,
         productId: product.id,
         guestName: formData.guestName.trim(),
         guestEmail: formData.guestEmail.trim(),
         quantity: formData.quantity,
-        message: formData.message.trim(),
-        status: 'reserved'
-      });
+        status: 'reserved' as const,
+        updatedAt: new Date().toISOString()
+      };
+      
+      await addReservation(reservationData);
       
       setIsSuccess(true);
       
@@ -132,14 +159,17 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
       }, 2000);
       
     } catch (error) {
-      alert('Hubo un error al procesar tu reserva. Intenta nuevamente.');
+      console.error('Reservation error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Hubo un error al procesar tu reserva. Intenta nuevamente.';
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const generateWhatsAppMessage = () => {
-    const message = `¡Hola! He reservado el regalo "${product.name}" para ${currentEvent.title}. 
+    const eventTitle = currentEvent?.title || 'el evento';
+    const message = `¡Hola! He reservado el regalo "${product.name}" para ${eventTitle}. 
     
 Detalles:
 - Producto: ${product.name}
@@ -223,6 +253,21 @@ Detalles:
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Guest Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -358,21 +403,6 @@ Detalles:
                 </>
               )}
             </div>
-          </div>
-
-          {/* Message */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <MessageSquare size={16} className="inline mr-1" />
-              Mensaje Especial (Opcional)
-            </label>
-            <textarea
-              value={formData.message}
-              onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
-              rows={3}
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:border-transparent transition-colors resize-none"
-              placeholder="Deja un mensaje de cariño para los futuros papás..."
-            />
           </div>
 
           {/* Total */}
