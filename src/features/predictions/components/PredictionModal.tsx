@@ -92,18 +92,14 @@ const PredictionModal: React.FC<PredictionModalProps> = ({ isOpen, onClose, sele
       return;
     }
 
-    // Generar un ID de invitado temporal basado en timestamp y un número aleatorio
-    const generateGuestId = () => {
-      return `guest-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    };
-
-    setIsSubmitting(true);
+      setIsSubmitting(true);
     
     try {
-      // Crear o actualizar la predicción
+      // Enviar los datos del invitado directamente a addPrediction
       const result = await addPrediction({
         event_id: currentEvent.id,
-        guest_id: generateGuestId(),
+        guest_name: formData.guestName.trim(),
+        guest_email: formData.guestEmail.trim(),
         prediction: selectedGender,
         name_suggestion: formData.suggestedName.trim(),
         message: formData.message?.trim() || '',
