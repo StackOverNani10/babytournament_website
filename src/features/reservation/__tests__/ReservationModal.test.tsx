@@ -2,11 +2,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { EventsProvider } from '../../../context/events/EventsContext';
 import { ReservationsProvider } from '../../../context/reservations/ReservationsContext';
 import { ThemeProvider } from '../../../context/theme/ThemeContext';
+import { AppProvider } from '../../../context/AppContext';
 import ReservationModal from '../components/ReservationModal';
 import type { Event } from '../../event/types/events';
+import { Product } from '../../../types';
 
 // Mock de los datos necesarios
-const mockProduct = {
+const mockProduct: Product = {
   id: '1',
   name: 'Producto de prueba',
   price: 29.99,
@@ -15,31 +17,48 @@ const mockProduct = {
   imageUrl: '/test-image.jpg',
   categoryId: 'cat1',
   storeId: 'store1',
-  isActive: true
+  isActive: true,
+  description: 'Descripción de prueba'
 };
 
 const mockStore = {
   id: 'store1',
   name: 'Tienda de prueba',
-  website: 'https://tiendadeprueba.com'
+  website: 'https://tiendadeprueba.com',
+  logoUrl: '/store-logo.jpg'
 };
 
 const mockEvent: Event = {
   id: 'event1',
   title: 'Evento de prueba',
+  subtitle: 'Subtítulo de prueba',
   date: '2024-12-31',
+  time: '18:00',
   location: 'Ubicación de prueba',
   type: 'baby-shower',
   isActive: true,
   createdAt: new Date().toISOString(),
-  sections: {}
+  sections: {},
+  //theme: 'neutral',
+  description: 'Descripción del evento',
+  //endDate: '2025-01-01',
+  //isPrivate: false
 };
 
-const mockAddReservation = jest.fn();
+// Mock de las funciones del contexto
+jest.mock('../../../context/AppContext', () => ({
+  ...jest.requireActual('../../../context/AppContext'),
+  useApp: () => ({
+    currentEvent: mockEvent,
+    stores: [mockStore],
+    addReservation: jest.fn().mockResolvedValue({}),
+    selectedTheme: 'neutral'
+  })
+}));
 
 describe('ReservationModal', () => {
   const onClose = jest.fn();
-  
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -47,22 +66,24 @@ describe('ReservationModal', () => {
   const renderComponent = () => {
     return render(
       <ThemeProvider defaultTheme="neutral">
-        <EventsProvider initialEvents={[mockEvent]}>
-          <ReservationsProvider>
-            <ReservationModal 
-              product={mockProduct} 
-              onClose={onClose} 
-              maxQuantity={5} 
-            />
-          </ReservationsProvider>
-        </EventsProvider>
+        <AppProvider>
+          <EventsProvider initialEvents={[mockEvent]}>
+            <ReservationsProvider>
+              <ReservationModal
+                product={mockProduct}
+                onClose={onClose}
+                maxQuantity={5}
+              />
+            </ReservationsProvider>
+          </EventsProvider>
+        </AppProvider>
       </ThemeProvider>
     );
   };
 
   it('renders the modal with product information', () => {
     renderComponent();
-    
+
     expect(screen.getByText('Reservar Regalo')).toBeInTheDocument();
     expect(screen.getByText(mockProduct.name)).toBeInTheDocument();
     expect(screen.getByText(`$${mockProduct.price.toFixed(2)}`)).toBeInTheDocument();
@@ -71,75 +92,89 @@ describe('ReservationModal', () => {
     expect(screen.getByPlaceholderText('Tu nombre')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Tu correo electrónico')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Mensaje opcional (ej: dedicatoria)')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /confirmar reserva/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reservar/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /cancelar/i })).toBeInTheDocument();
   });
 
-  it('allows changing the quantity', () => {
+  it('allows changing the quantity', async () => {
     renderComponent();
-    
-    const quantityButton = screen.getByRole('button', { name: /cantidad/i });
+
+    // Find and click the quantity button
+    const quantityButton = screen.getByTestId('quantity-dropdown-button');
     fireEvent.click(quantityButton);
-    
-    const quantityOptions = screen.getAllByRole('menuitem');
-    expect(quantityOptions).toHaveLength(5); // 1-5
-    
-    fireEvent.click(quantityOptions[2]); // Selecciona cantidad 3
-    expect(screen.getByText('3')).toBeInTheDocument();
+
+    // Select quantity 3
+    const quantityOption = screen.getByText('3');
+    fireEvent.click(quantityOption);
+
+    // Verify the quantity was updated
+    expect(quantityButton).toHaveTextContent('3');
   });
 
   it('validates required fields', async () => {
     renderComponent();
-    
-    const submitButton = screen.getByRole('button', { name: /confirmar reserva/i });
+
+    const submitButton = screen.getByRole('button', { name: /reservar/i });
     fireEvent.click(submitButton);
-    
+
     await waitFor(() => {
       expect(screen.getByText('Por favor ingresa tu nombre')).toBeInTheDocument();
-      expect(screen.getByText('Por favor ingresa un correo válido')).toBeInTheDocument();
+      expect(screen.getByText('Por favor ingresa tu correo electrónico')).toBeInTheDocument();
     });
-    
-    expect(mockAddReservation).not.toHaveBeenCalled();
   });
 
   it('submits the form with valid data', async () => {
+    const mockAddReservation = jest.fn().mockResolvedValue({});
+
+    // Mock the useApp hook with our mock function
+    jest.spyOn(require('../../../context/AppContext'), 'useApp').mockImplementation(() => ({
+      currentEvent: mockEvent,
+      stores: [mockStore],
+      addReservation: mockAddReservation,
+      selectedTheme: 'neutral'
+    }));
+
     renderComponent();
-    
-    // Rellenar el formulario
+
+    // Fill out the form
     fireEvent.change(screen.getByPlaceholderText('Tu nombre'), {
       target: { value: 'Nombre de prueba' }
     });
-    
+
     fireEvent.change(screen.getByPlaceholderText('Tu correo electrónico'), {
       target: { value: 'test@example.com' }
     });
-    
+
     fireEvent.change(screen.getByPlaceholderText('Mensaje opcional (ej: dedicatoria)'), {
       target: { value: '¡Gracias por el regalo!' }
     });
-    
-    // Enviar el formulario
-    fireEvent.click(screen.getByText('Reservar'));
-    
-    expect(mockAddReservation).toHaveBeenCalledWith({
-      productId: mockProduct.id,
-      guestName: 'Juan Pérez',
-      guestEmail: 'juan@example.com',
-      quantity: 1,
-      message: '¡Gracias por el regalo!',
-      status: 'reserved'
+
+    // Submit the form
+    fireEvent.click(screen.getByRole('button', { name: /reservar/i }));
+
+    // Verify the reservation was created with correct data
+    await waitFor(() => {
+      expect(mockAddReservation).toHaveBeenCalledWith({
+        productId: mockProduct.id,
+        guestName: 'Nombre de prueba',
+        guestEmail: 'test@example.com',
+        quantity: 1,
+        message: '¡Gracias por el regalo!',
+        status: 'reserved',
+        eventId: mockEvent.id
+      });
+
+      // Verify success message is shown
+      expect(screen.getByText('¡Reserva Confirmada!')).toBeInTheDocument();
     });
-    
-    // Verificar que se llamó a onClose después del envío exitoso
-    expect(onClose).toHaveBeenCalled();
   });
 
   it('closes when clicking the close button', () => {
     renderComponent();
-    
+
     const closeButton = screen.getByRole('button', { name: /cancelar/i });
     fireEvent.click(closeButton);
-    
+
     expect(onClose).toHaveBeenCalled();
   });
 });

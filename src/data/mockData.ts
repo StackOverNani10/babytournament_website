@@ -132,6 +132,77 @@ export const stores: Store[] = [
   { id: '5', name: 'Amazon', website: 'https://amazon.com' }
 ];
 
+// Mock data for guests
+export const mockGuests = [
+  {
+    id: 'guest-1',
+    event_id: '1',
+    name: 'Ana García',
+    email: 'ana.garcia@example.com',
+    phone: '809-555-1234',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'guest-2',
+    event_id: '1',
+    name: 'Carlos Rodríguez',
+    email: 'carlos.rodriguez@example.com',
+    phone: '809-555-5678',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'guest-3',
+    event_id: '2',
+    name: 'María López',
+    email: 'maria.lopez@example.com',
+    phone: '829-555-9012',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }
+];
+
+// Mock data for predictions
+export const mockPredictions = [
+  {
+    id: 'pred-1',
+    event_id: '1',
+    guest_id: 'guest-1',
+    prediction: 'girl' as const,
+    name_suggestion: 'Sofía',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'pred-2',
+    event_id: '1',
+    guest_id: 'guest-2',
+    prediction: 'boy' as const,
+    name_suggestion: 'Mateo',
+    created_at: new Date().toISOString()
+  }
+];
+
+// Mock data for reservations
+export const mockReservations = [
+  {
+    id: 'res-1',
+    guest_id: 'guest-1',
+    product_id: '1',
+    status: 'confirmed' as const,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'res-2',
+    guest_id: 'guest-2',
+    product_id: '2',
+    status: 'pending' as const,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }
+];
+
 export const products: Product[] = [
   {
     id: '1',
