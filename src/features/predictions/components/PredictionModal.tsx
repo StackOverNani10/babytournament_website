@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { X, Heart, Crown, Sparkles, User, Mail, MessageSquare } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
+import ConfirmationDialog from '../../../components/ui/ConfirmationDialog';
 
 interface PredictionModalProps {
   isOpen: boolean;
@@ -19,6 +20,9 @@ const PredictionModal: React.FC<PredictionModalProps> = ({ isOpen, onClose, sele
     message: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [dialogMessage, setDialogMessage] = useState('');
   
   // Obtener las clases de enfoque basadas en el género seleccionado
   const getFocusClasses = () => {
@@ -34,35 +38,99 @@ const PredictionModal: React.FC<PredictionModalProps> = ({ isOpen, onClose, sele
 
   const focusClasses = getFocusClasses();
 
+  const handleCloseSuccess = useCallback(() => {
+    setShowSuccessDialog(false);
+    onClose();
+    // Reset form
+    setFormData({
+      guestName: '',
+      guestEmail: '',
+      suggestedName: '',
+      message: ''
+    });
+  }, [onClose]);
+
+  const handleCloseError = useCallback(() => {
+    setShowErrorDialog(false);
+  }, []);
+
+  // Reset submitting state when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setIsSubmitting(false);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const validateEmail = (email: string) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validación de campos requeridos
     if (!formData.guestName.trim() || !formData.guestEmail.trim() || !formData.suggestedName.trim()) {
-      alert('Por favor completa todos los campos requeridos');
+      setDialogMessage('Por favor completa todos los campos requeridos');
+      setShowErrorDialog(true);
       return;
     }
+
+    // Validación de formato de correo electrónico
+    if (!validateEmail(formData.guestEmail.trim())) {
+      setDialogMessage('Por favor ingresa un correo electrónico válido');
+      setShowErrorDialog(true);
+      return;
+    }
+
+    // Verificación de evento activo
+    if (!currentEvent) {
+      setDialogMessage('No hay un evento activo. Por favor, inténtalo de nuevo.');
+      setShowErrorDialog(true);
+      return;
+    }
+
+    // Generar un ID de invitado temporal basado en timestamp y un número aleatorio
+    const generateGuestId = () => {
+      return `guest-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    };
 
     setIsSubmitting(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      addPrediction({
-        eventId: currentEvent.id,
-        guestName: formData.guestName.trim(),
-        guestEmail: formData.guestEmail.trim(),
-        predictedGender: selectedGender,
-        suggestedName: formData.suggestedName.trim(),
-        message: formData.message.trim()
+      // Crear o actualizar la predicción
+      const result = await addPrediction({
+        event_id: currentEvent.id,
+        guest_id: generateGuestId(),
+        prediction: selectedGender,
+        name_suggestion: formData.suggestedName.trim(),
+        message: formData.message?.trim() || '',
+        created_at: new Date().toISOString()
       });
       
-      alert('¡Tu predicción ha sido registrada! 🎉');
-      onClose();
+      // Si result es null, significa que el usuario canceló la actualización
+      if (result === null) {
+        return; // No hacer nada más, el usuario canceló
+      }
+      
+      // Si hay un resultado, mostrar mensaje de éxito
+      if (result) {
+        setDialogMessage('¡Tu predicción ha sido registrada con éxito! 🎉');
+        setShowSuccessDialog(true);
+        setFormData({
+          guestName: '',
+          guestEmail: '',
+          suggestedName: '',
+          message: ''
+        });
+      }
       
     } catch (error) {
-      alert('Hubo un error al registrar tu predicción. Intenta nuevamente.');
+      console.error('Error al registrar la predicción:', error);
+      setDialogMessage('Hubo un error al procesar tu predicción. Por favor, inténtalo de nuevo más tarde.');
+      setShowErrorDialog(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -90,6 +158,30 @@ const PredictionModal: React.FC<PredictionModalProps> = ({ isOpen, onClose, sele
   const ThemeIcon = theme.icon;
 
   return (
+    <>
+      <ConfirmationDialog
+        isOpen={showSuccessDialog}
+        onClose={handleCloseSuccess}
+        onConfirm={handleCloseSuccess}
+        title="¡Éxito!"
+        message={dialogMessage}
+        confirmText="Cerrar"
+        variant="success"
+        hideCancelButton
+      />
+      
+      <ConfirmationDialog
+        isOpen={showErrorDialog}
+        onClose={handleCloseError}
+        onConfirm={handleCloseError}
+        title="Error"
+        message={dialogMessage}
+        confirmText="Entendido"
+        variant="danger"
+        hideCancelButton
+      />
+
+      
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto" shadow="lg">
         {/* Header */}
@@ -204,6 +296,7 @@ const PredictionModal: React.FC<PredictionModalProps> = ({ isOpen, onClose, sele
         </form>
       </Card>
     </div>
+    </>
   );
 };
 

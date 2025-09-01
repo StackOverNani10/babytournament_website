@@ -1,14 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEvents } from '../../../context/events/EventsContext';
 import { useReservations } from '../../../context/reservations/ReservationsContext';
 import { useApp } from '../../../context/AppContext';
+import { EventSections } from '@/features/event/types/events';
+
+// Interfaces para las secciones
+type SectionConfig = {
+  [key: string]: any;
+};
+
+interface Section {
+  id: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  order: number;
+  config?: Record<string, any>;
+  [key: string]: any; // Para permitir propiedades adicionales
+}
+
+interface Sections {
+  [key: string]: Section;
+}
+import { usePredictions } from '../../../context/predictions/PredictionsContext';
 import { Event, EventType } from '../../event/types/events';
 import { Product } from '../../gifts/types/products';
-import type { GenderPrediction } from '../../predictions/types/predictions';
 import Layout from '../../../components/layout/Layout';
 import Button from '../../../components/ui/Button';
 import { BarChart3, Users, Gift, LogOut, TrendingUp } from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
+
+// Standalone interface for predictions with guest info
+interface Guest {
+  id: string;
+  event_id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string | null;
+}
+
+interface AdminPanelProps {
+  onLogout: () => void;
+}
 
 // Componente Badge mejorado
 interface BadgeProps {
@@ -51,22 +88,83 @@ interface AdminPanelProps {
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
-  const { 
-    events, 
+  const {
+    events,
     updateEvent,
     setActiveEvent,
     currentEvent
   } = useEvents();
-  
-  const { 
-    reservations, 
+
+  const {
+    reservations,
     getProductReservations
   } = useReservations();
-  
+
   const { products } = useApp();
-  
-  // Mock predictions until we move them to their own context
-  const [predictions, setPredictions] = useState<GenderPrediction[]>([]);
+
+  // Get predictions and guests data
+  const { predictions: rawPredictions, loading: predictionsLoading, refreshPredictions } = usePredictions();
+  const [guests, setGuests] = useState<Guest[]>([]);
+
+  // Fetch guests data
+  useEffect(() => {
+    const fetchGuests = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('guests')
+          .select('*');
+
+        if (error) throw error;
+
+        setGuests(data || []);
+      } catch (error) {
+        console.error('Error fetching guests:', error);
+      }
+    };
+
+    fetchGuests();
+  }, []);
+
+  // Process predictions to include guest information
+  const predictions = useMemo(() => {
+    return rawPredictions.map((prediction: any) => {
+      // Find the guest for this prediction
+      const guest = guests.find(g => g.id === prediction.guest_id);
+
+      return {
+        ...prediction,
+        guest,
+        guest_name: guest?.name || '',
+        name_suggestion: prediction.name_suggestion || '',
+        created_at: prediction.created_at || new Date().toISOString()
+      };
+    });
+  }, [rawPredictions, guests]);
+
+  // Load predictions when event changes
+  useEffect(() => {
+    refreshPredictions();
+  }, [currentEvent?.id, refreshPredictions]);
+
+  // Format date helper function
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return 'Sin fecha';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Fecha inválida';
+
+      return date.toLocaleString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      console.error('Error formatting date:', e);
+      return 'Fecha inválida';
+    }
+  };
   type TabType = 'overview' | 'reservations' | 'predictions' | 'products' | 'events';
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
@@ -101,10 +199,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
     totalReservations: reservations?.length || 0,
     totalPredictions: predictions?.length || 0,
     uniqueGuests: new Set(reservations?.map(r => r.guestEmail) || []).size,
-    boyPredictions: predictions?.filter(p => p.predictedGender === 'boy').length || 0,
-    girlPredictions: predictions?.filter(p => p.predictedGender === 'girl').length || 0,
-    completionRate: products?.length 
-      ? Math.round(((reservations?.length || 0) / products.length) * 100) 
+    boyPredictions: predictions?.filter(p => p.prediction === 'boy').length || 0,
+    girlPredictions: predictions?.filter(p => p.prediction === 'girl').length || 0,
+    totalNameSuggestions: predictions?.filter(p => p.name_suggestion).length || 0,
+    totalMessages: predictions?.filter(p => p.message).length || 0,
+    completionRate: products?.length
+      ? Math.round(((reservations?.length || 0) / products.length) * 100)
       : 0,
     totalValue: reservations?.reduce((sum, r) => {
       const product = products?.find((p: Product) => p.id === r.productId);
@@ -160,11 +260,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                 <button
                   key={id}
                   onClick={() => setActiveTab(id as TabType)}
-                  className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 whitespace-nowrap ${
-                    activeTab === id
-                      ? 'bg-slate-700 text-blue-400 shadow-lg'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
-                  }`}
+                  className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 whitespace-nowrap ${activeTab === id
+                    ? 'bg-slate-700 text-blue-400 shadow-lg'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                    }`}
                 >
                   <Icon size={16} className={activeTab === id ? 'text-blue-400' : 'text-slate-400'} />
                   {label}
@@ -224,7 +323,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                   {popularProducts.slice(0, 3).map(({ product, reservations: count }) => {
                     const progress = Math.min((count / 10) * 100, 100);
                     const maxQty = 10;
-                    
+
                     return (
                       <div key={product.id} className="space-y-1">
                         <div className="flex items-center justify-between">
@@ -300,7 +399,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                             </div>
                           </div>
                         </div>
-                        <Badge 
+                        <Badge
                           variant={reservation.status === 'confirmed' ? 'success' : 'default'}
                           className="text-xs px-2 py-1"
                         >
@@ -325,59 +424,86 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                   {predictions.length} en total
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {predictions.slice(0, 10).map((prediction) => (
-                  <div 
-                    key={prediction.id} 
-                    className="bg-slate-800 p-4 rounded-xl border border-slate-700 hover:border-slate-600 transition-colors"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <h5 className="font-medium text-white">
-                        {prediction.guestName}
-                      </h5>
-                      <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        prediction.predictedGender === 'boy' 
-                          ? 'bg-blue-900/30 text-blue-400' 
-                          : 'bg-pink-900/30 text-pink-400'
-                      }`}>
-                        {prediction.predictedGender === 'boy' ? '👶 Niño' : '👧 Niña'}
-                      </div>
-                    </div>
-                    
-                    <div className="bg-slate-900/50 p-3 rounded-lg mb-3">
-                      <div className="text-sm text-slate-300 font-medium mb-1">
-                        Nombre sugerido:
-                      </div>
-                      <div className="text-white font-medium">
-                        {prediction.suggestedName || 'Sin nombre sugerido'}
-                      </div>
-                    </div>
-                    
-                    {prediction.message && (
-                      <div className="text-sm text-slate-400 italic mb-3">
-                        "{prediction.message}"
-                      </div>
-                    )}
-                    
-                    <div className="text-xs text-slate-500 flex justify-between items-center">
-                      <span>
-                        {new Date(prediction.createdAt).toLocaleDateString('es-ES', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                      <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">
-                        {prediction.predictedDate 
-                          ? new Date(prediction.predictedDate).toLocaleDateString('es-ES')
-                          : 'Sin fecha'}
-                      </span>
-                    </div>
+
+              {predictions.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 bg-slate-800/50 rounded-lg">
+                  No hay predicciones aún
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {predictions.slice(0, 10).map((prediction: any) => {
+                      const guestName = prediction.guest_name || prediction.guest?.name || 'Invitado';
+                      const isBoy = prediction.prediction === 'boy';
+
+                      return (
+                        <div
+                          key={prediction.id}
+                          className="bg-slate-800 p-4 rounded-xl border border-slate-700 hover:border-slate-600 transition-colors"
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <h5 className="font-medium text-white">
+                              Por: {guestName}
+                            </h5>
+                            <div
+                              className={`px-2.5 py-1 rounded-full text-xs font-medium ${isBoy
+                                ? 'bg-blue-900/30 text-blue-400'
+                                : 'bg-pink-900/30 text-pink-400'
+                                }`}
+                            >
+                              {isBoy ? '👶 Niño' : '👧 Niña'}
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-900/50 p-3 rounded-lg mb-3">
+                            <div className="space-y-2">
+                              <div>
+                                <div className="text-sm text-slate-300 font-medium">
+                                  Nombre sugerido:
+                                </div>
+                                <div className="text-white font-medium">
+                                  {prediction.name_suggestion || 'Sin nombre sugerido'}
+                                </div>
+                              </div>
+
+                            </div>
+                          </div>
+
+                          <div className="flex justify-between items-center gap-4 text-xs text-slate-500">
+                            <div className="flex-1 min-w-0">
+                              {prediction.message && (
+                                <div className="text-sm text-slate-300 italic truncate" title={prediction.message}>
+                                  Mensaje: "{prediction.message}"
+                                </div>
+                              )}
+                            </div>
+                            {prediction.created_at && (
+                              <div className="flex-shrink-0 whitespace-nowrap">
+                                {new Date(prediction.created_at).toLocaleDateString('es-US', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric'
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
+
+                  {predictions.length > 10 && (
+                    <div className="mt-4 text-center">
+                      <button
+                        onClick={() => {/* Handle show more */ }}
+                        className="text-blue-400 hover:text-blue-300 text-sm hover:underline"
+                      >
+                        Mostrar más predicciones
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -388,14 +514,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                 <h4 className="text-xl font-semibold text-white">
                   Gestión de Productos
                 </h4>
-                <Button 
-                  onClick={() => {}}
+                <Button
+                  onClick={() => { }}
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   Agregar Producto
                 </Button>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {products.map((product) => {
                   const productReservations = reservations.filter(r => r.productId === product.id);
@@ -403,10 +529,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                   const maxQty = product.maxQuantity || 10;
                   const progress = Math.min((totalReserved / maxQty) * 100, 100);
                   const isLowStock = totalReserved >= maxQty * 0.8;
-                  
+
                   return (
-                    <div 
-                      key={product.id} 
+                    <div
+                      key={product.id}
                       className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-slate-600 transition-colors"
                     >
                       <div className="h-36 bg-slate-700 overflow-hidden">
@@ -416,7 +542,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                           className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                         />
                       </div>
-                      
+
                       <div className="p-4">
                         <div className="flex justify-between items-start mb-2">
                           <h5 className="font-bold text-white text-lg">
@@ -426,7 +552,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                             ${product.price.toFixed(2)}
                           </span>
                         </div>
-                        
+
                         <div className="mb-3">
                           <div className="flex justify-between text-xs text-slate-400 mb-1">
                             <span>Reservados: {totalReserved}/{maxQty}</span>
@@ -436,24 +562,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                           </div>
                           <div className="w-full bg-slate-700 rounded-full h-2">
                             <div
-                              className={`h-full rounded-full transition-all duration-500 ${
-                                isLowStock ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gradient-to-r from-blue-500 to-emerald-500'
-                              }`}
+                              className={`h-full rounded-full transition-all duration-500 ${isLowStock ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gradient-to-r from-blue-500 to-emerald-500'
+                                }`}
                               style={{ width: `${progress}%` }}
                             />
                           </div>
                         </div>
-                        
+
                         <div className="flex gap-2 mt-4">
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500"
                           >
                             Editar
                           </Button>
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500"
                           >
@@ -467,7 +592,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
               </div>
             </div>
           )}
-          
+
           {/* Events Tab */}
           {activeTab === 'events' && (
             <div className="mt-8 bg-slate-800/50 rounded-xl p-6 shadow-lg">
@@ -487,47 +612,47 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                       isActive: false,
                       createdAt: new Date().toISOString(),
                       sections: {
-                        'countdown': { 
-                          id: 'countdown', 
+                        'countdown': {
+                          id: 'countdown',
                           title: 'Cuenta Regresiva',
                           description: 'Muestra un contador para el inicio del evento',
-                          enabled: true, 
-                          order: 1 
+                          enabled: true,
+                          order: 1
                         },
-                        'predictions': { 
-                          id: 'predictions', 
+                        'predictions': {
+                          id: 'predictions',
                           title: 'Predicciones de Género',
                           description: 'Permite a los invitados predecir el género del bebé',
-                          enabled: true, 
-                          order: 2 
+                          enabled: true,
+                          order: 2
                         },
-                        'gift-catalog': { 
-                          id: 'gift-catalog', 
+                        'gift-catalog': {
+                          id: 'gift-catalog',
                           title: 'Lista de Regalos',
                           description: 'Muestra los regalos disponibles para el evento',
-                          enabled: true, 
-                          order: 3 
+                          enabled: true,
+                          order: 3
                         },
-                        'activity-voting': { 
-                          id: 'activity-voting', 
+                        'activity-voting': {
+                          id: 'activity-voting',
                           title: 'Votación de Actividades',
                           description: 'Permite votar por actividades para el evento',
-                          enabled: true, 
-                          order: 4 
+                          enabled: true,
+                          order: 4
                         },
-                        'raffle': { 
-                          id: 'raffle', 
+                        'raffle': {
+                          id: 'raffle',
                           title: 'Sorteos',
                           description: 'Gestiona los sorteos del evento',
-                          enabled: true, 
-                          order: 5 
+                          enabled: true,
+                          order: 5
                         },
-                        'wishes': { 
-                          id: 'wishes', 
+                        'wishes': {
+                          id: 'wishes',
                           title: 'Mensajes de Deseos',
                           description: 'Recopila mensajes de buenos deseos para los padres',
-                          enabled: true, 
-                          order: 6 
+                          enabled: true,
+                          order: 6
                         }
                       }
                     });
@@ -538,17 +663,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                   Nuevo Evento
                 </button>
               </div>
-              
+
               <div className="space-y-4">
                 {events.map(event => (
-                  <div 
-                    key={event.id} 
+                  <div
+                    key={event.id}
                     className={`p-4 rounded-lg border ${event.isActive ? 'border-blue-500 bg-blue-900/20' : 'border-slate-700 bg-slate-800/50'} transition-colors`}
                   >
                     <div className="flex justify-between items-start">
                       <div>
                         <h3 className="font-bold text-lg text-white">
-                          {event.title} 
+                          {event.title}
                           <span className="ml-2 text-sm font-normal px-2 py-0.5 rounded-full bg-slate-700">
                             {event.type === 'gender-reveal' ? 'Gender Reveal' : 'Baby Shower'}
                           </span>
@@ -569,66 +694,92 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                             // Asegurarse de que todas las propiedades necesarias estén presentes
                             const sections = event.sections || {};
                             const defaultSections = {
-                              'countdown': { 
-                                id: 'countdown', 
+                              'countdown': {
+                                id: 'countdown',
                                 title: 'Cuenta Regresiva',
                                 description: 'Muestra un contador para el inicio del evento',
-                                enabled: true, 
-                                order: 1 
+                                enabled: true,
+                                order: 1
                               },
-                              'predictions': { 
-                                id: 'predictions', 
+                              'predictions': {
+                                id: 'predictions',
                                 title: 'Predicciones de Género',
                                 description: 'Permite a los invitados predecir el género del bebé',
-                                enabled: true, 
-                                order: 2 
+                                enabled: true,
+                                order: 2
                               },
-                              'gift-catalog': { 
-                                id: 'gift-catalog', 
+                              'gift-catalog': {
+                                id: 'gift-catalog',
                                 title: 'Lista de Regalos',
                                 description: 'Muestra los regalos disponibles para el evento',
-                                enabled: true, 
-                                order: 3 
+                                enabled: true,
+                                order: 3
                               },
-                              'activity-voting': { 
-                                id: 'activity-voting', 
+                              'activity-voting': {
+                                id: 'activity-voting',
                                 title: 'Votación de Actividades',
                                 description: 'Permite votar por actividades para el evento',
-                                enabled: true, 
-                                order: 4 
+                                enabled: true,
+                                order: 4
                               },
-                              'raffle': { 
-                                id: 'raffle', 
+                              'raffle': {
+                                id: 'raffle',
                                 title: 'Sorteos',
                                 description: 'Gestiona los sorteos del evento',
-                                enabled: true, 
-                                order: 5 
+                                enabled: true,
+                                order: 5
                               },
-                              'wishes': { 
-                                id: 'wishes', 
+                              'wishes': {
+                                id: 'wishes',
                                 title: 'Mensajes de Deseos',
                                 description: 'Recopila mensajes de buenos deseos para los padres',
-                                enabled: true, 
-                                order: 6 
+                                enabled: true,
+                                order: 6
                               }
                             };
-                            
-                            // Combinar las secciones existentes con los valores por defecto
-                            const mergedSections = Object.keys(defaultSections).reduce((acc, key) => ({
-                              ...acc,
-                              [key]: {
-                                ...defaultSections[key as keyof typeof defaultSections],
-                                ...sections[key as keyof typeof sections],
-                                // Asegurar que los campos requeridos estén presentes
-                                id: key,
-                                enabled: sections[key as keyof typeof sections]?.enabled ?? defaultSections[key as keyof typeof defaultSections].enabled,
-                                order: sections[key as keyof typeof sections]?.order ?? defaultSections[key as keyof typeof defaultSections].order
+
+                            // Convertir sections de string a objeto si es necesario
+                            let parsedSections: Record<string, any> = {};
+                            if (typeof sections === 'string') {
+                              try {
+                                parsedSections = JSON.parse(sections);
+                              } catch (error) {
+                                console.error('Error al parsear las secciones:', error);
+                                parsedSections = {};
                               }
-                            }), {});
-                            
+                            } else if (sections && typeof sections === 'object') {
+                              parsedSections = { ...sections };
+                            }
+
+                            // Combinar las secciones existentes con los valores por defecto
+                            const mergedSections = Object.entries(defaultSections).reduce<Record<string, Section>>((acc, [key, defaultSection]) => {
+                              const dbSection = parsedSections[key];
+
+                              // Crear una nueva sección combinando los valores por defecto con los de la base de datos
+                              const section: Section = {
+                                ...defaultSection,
+                                id: key,
+                                enabled: dbSection?.enabled ?? defaultSection.enabled,
+                                order: dbSection?.order ?? defaultSection.order
+                              };
+
+                              // Manejar config solo si existe en alguna de las dos fuentes
+                              if (dbSection?.config || (defaultSection as any).config) {
+                                section.config = {
+                                  ...((defaultSection as any).config || {}),
+                                  ...(dbSection?.config || {})
+                                };
+                              }
+
+                              return {
+                                ...acc,
+                                [key]: section
+                              };
+                            }, {});
+
                             setEditingEvent({
                               ...event,
-                              sections: mergedSections
+                              sections: mergedSections as any // Usamos 'as any' temporalmente para evitar problemas de tipo
                             });
                             setIsEditing(true);
                           }}
@@ -651,7 +802,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                   </div>
                 ))}
               </div>
-              
+
               {/* Event Form Modal */}
               {isEditing && editingEvent && (
                 <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -662,7 +813,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                         <h3 className="text-xl font-bold text-white">
                           {editingEvent.id === 'new' ? 'Nuevo Evento' : 'Editar Evento'}
                         </h3>
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setIsEditing(false)}
                           className="text-gray-400 hover:text-white"
@@ -673,323 +824,343 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                           </svg>
                         </button>
                       </div>
-                      
+
                       {/* Tabs */}
                       <div className="flex space-x-4 border-b border-slate-700 -mx-6 px-6">
                         <button
                           type="button"
                           onClick={() => setActiveTabInEditor('details')}
-                          className={`pb-3 px-1 border-b-2 font-medium text-sm ${
-                            activeTabInEditor === 'details' 
-                              ? 'border-blue-500 text-blue-400' 
-                              : 'border-transparent text-gray-400 hover:text-white'
-                          }`}
+                          className={`pb-3 px-1 border-b-2 font-medium text-sm ${activeTabInEditor === 'details'
+                            ? 'border-blue-500 text-blue-400'
+                            : 'border-transparent text-gray-400 hover:text-white'
+                            }`}
                         >
                           Detalles del Evento
                         </button>
                         <button
                           type="button"
                           onClick={() => setActiveTabInEditor('sections')}
-                          className={`pb-3 px-1 border-b-2 font-medium text-sm ${
-                            activeTabInEditor === 'sections' 
-                              ? 'border-blue-500 text-blue-400' 
-                              : 'border-transparent text-gray-400 hover:text-white'
-                          }`}
+                          className={`pb-3 px-1 border-b-2 font-medium text-sm ${activeTabInEditor === 'sections'
+                            ? 'border-blue-500 text-blue-400'
+                            : 'border-transparent text-gray-400 hover:text-white'
+                            }`}
                         >
                           Secciones
                         </button>
                       </div>
                     </div>
-                    
+
                     {/* Scrollable Content */}
                     <div className="p-6 overflow-y-auto flex-1">
-                      <form 
-                        id="event-form" 
-                        onSubmit={(e) => {
+                      <form
+                        id="event-form"
+                        onSubmit={async (e) => {
                           e.preventDefault();
                           if (!editingEvent?.id) return;
-                          updateEvent(editingEvent.id, editingEvent);
-                          setIsEditing(false);
+
+                          try {
+                            // Crear un nuevo objeto con las propiedades necesarias para la actualización
+                            const updateData = {
+                              ...editingEvent,
+                              // Only include sections if it exists
+                              ...(editingEvent.sections && {
+                                sections: editingEvent.sections // No need to stringify here, the context will handle it
+                              })
+                            };
+
+                            // Actualizar el evento
+                            await updateEvent(editingEvent.id, updateData);
+                            setIsEditing(false);
+                            setIsEditing(false);
+                          } catch (error) {
+                            console.error('Error al actualizar el evento:', error);
+                            // Aquí podrías mostrar un mensaje de error al usuario
+                          }
                         }}
                       >
-                      {activeTabInEditor === 'details' ? (
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1">
-                            Tipo de Evento
-                          </label>
-                          <select
-                            value={editingEvent.type}
-                            onChange={(e) => setEditingEvent({
-                              ...editingEvent,
-                              type: e.target.value as EventType
-                            })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                            required
-                          >
-                            <option value="gender-reveal">Gender Reveal</option>
-                            <option value="baby-shower">Baby Shower</option>
-                          </select>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1">
-                            Título
-                          </label>
-                          <input
-                            type="text"
-                            value={editingEvent.title}
-                            onChange={(e) => setEditingEvent({
-                              ...editingEvent,
-                              title: e.target.value
-                            })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                            required
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1">
-                            Subtítulo
-                          </label>
-                          <input
-                            type="text"
-                            value={editingEvent.subtitle || ''}
-                            onChange={(e) => setEditingEvent({
-                              ...editingEvent,
-                              subtitle: e.target.value
-                            })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                          />
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">
-                              Fecha
-                            </label>
-                            <input
-                              type="date"
-                              value={editingEvent.date}
-                              onChange={(e) => setEditingEvent({
-                                ...editingEvent,
-                                date: e.target.value
-                              })}
-                              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                              required
-                            />
-                          </div>
-                          
-                          <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">
-                              Hora
-                            </label>
-                            <input
-                              type="time"
-                              value={editingEvent.time || '15:00'}
-                              onChange={(e) => setEditingEvent({
-                                ...editingEvent,
-                                time: e.target.value
-                              })}
-                              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                              required
-                            />
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1">
-                            Ubicación
-                          </label>
-                          <input
-                            type="text"
-                            value={editingEvent.location}
-                            onChange={(e) => setEditingEvent({
-                              ...editingEvent,
-                              location: e.target.value
-                            })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                            required
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1">
-                            Descripción
-                          </label>
-                          <textarea
-                            value={editingEvent.description || ''}
-                            onChange={(e) => setEditingEvent({
-                              ...editingEvent,
-                              description: e.target.value
-                            })}
-                            rows={4}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-gray-300 mb-1">
-                            URL de la Imagen
-                          </label>
-                          <input
-                            type="url"
-                            value={editingEvent.imageUrl || ''}
-                            onChange={(e) => setEditingEvent({
-                              ...editingEvent,
-                              imageUrl: e.target.value
-                            })}
-                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
-                          />
-                        </div>
-                        
-                        {/* Contenido del formulario - sin botones aquí */}
-                      </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <h4 className="text-lg font-semibold text-white mb-4">Gestionar Secciones</h4>
+                        {activeTabInEditor === 'details' ? (
                           <div className="space-y-4">
-                        {editingEvent?.sections && Object.entries(editingEvent.sections).map(([sectionKey, section]) => (
-                              <div key={section.id} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
-                                <div className="flex-1">
-                                  <h5 className="font-medium text-white">{section.title}</h5>
-                                  <p className="text-sm text-slate-400">{section.description}</p>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={section.enabled}
-                                    onChange={() => {
-                                      if (!editingEvent?.sections) return;
-                                      setEditingEvent({
-                                        ...editingEvent,
-                                        sections: {
-                                          ...editingEvent.sections,
-                                          [sectionKey]: {
-                                            ...section,
-                                            enabled: !section.enabled
-                                          }
-                                        }
-                                      });
-                                    }}
-                                    className="sr-only peer"
-                                    aria-label={`${section.title} - ${section.enabled ? 'Desactivar' : 'Activar'} sección`}
-                                  />
-                                  <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 peer-checked:ring-2 peer-checked:ring-blue-500/50 transition-colors duration-200 ease-in-out relative">
-                                    <div className={`absolute top-0.5 left-0.5 bg-white rounded-full h-5 w-5 transition-transform duration-200 ease-in-out ${section.enabled ? 'translate-x-5' : 'translate-x-0'}`}></div>
-                                    <span className="sr-only">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">
+                                Tipo de Evento
+                              </label>
+                              <select
+                                value={editingEvent.type}
+                                onChange={(e) => setEditingEvent({
+                                  ...editingEvent,
+                                  type: e.target.value as EventType
+                                })}
+                                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                                required
+                              >
+                                <option value="gender-reveal">Gender Reveal</option>
+                                <option value="baby-shower">Baby Shower</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">
+                                Título
+                              </label>
+                              <input
+                                type="text"
+                                value={editingEvent.title}
+                                onChange={(e) => setEditingEvent({
+                                  ...editingEvent,
+                                  title: e.target.value
+                                })}
+                                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                                required
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">
+                                Subtítulo
+                              </label>
+                              <input
+                                type="text"
+                                value={editingEvent.subtitle || ''}
+                                onChange={(e) => setEditingEvent({
+                                  ...editingEvent,
+                                  subtitle: e.target.value
+                                })}
+                                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                  Fecha
+                                </label>
+                                <input
+                                  type="date"
+                                  value={editingEvent.date}
+                                  onChange={(e) => setEditingEvent({
+                                    ...editingEvent,
+                                    date: e.target.value
+                                  })}
+                                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                                  required
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                  Hora
+                                </label>
+                                <input
+                                  type="time"
+                                  value={editingEvent.time || '15:00'}
+                                  onChange={(e) => setEditingEvent({
+                                    ...editingEvent,
+                                    time: e.target.value
+                                  })}
+                                  className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">
+                                Ubicación
+                              </label>
+                              <input
+                                type="text"
+                                value={editingEvent.location}
+                                onChange={(e) => setEditingEvent({
+                                  ...editingEvent,
+                                  location: e.target.value
+                                })}
+                                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                                required
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">
+                                Descripción
+                              </label>
+                              <textarea
+                                value={editingEvent.description || ''}
+                                onChange={(e) => setEditingEvent({
+                                  ...editingEvent,
+                                  description: e.target.value
+                                })}
+                                rows={4}
+                                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">
+                                URL de la Imagen
+                              </label>
+                              <input
+                                type="url"
+                                value={editingEvent.imageUrl || ''}
+                                onChange={(e) => setEditingEvent({
+                                  ...editingEvent,
+                                  imageUrl: e.target.value
+                                })}
+                                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                              />
+                            </div>
+
+                            {/* Contenido del formulario - sin botones aquí */}
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            <h4 className="text-lg font-semibold text-white mb-4">Gestionar Secciones</h4>
+                            <div className="space-y-4">
+                              {editingEvent?.sections && Object.entries(editingEvent.sections).map(([sectionKey, section]) => (
+                                <div key={section.id} className="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg">
+                                  <div className="flex-1">
+                                    <h5 className="font-medium text-white">{section.title}</h5>
+                                    <p className="text-sm text-slate-400">{section.description}</p>
+                                  </div>
+                                  <label className="relative inline-flex items-center cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={section.enabled}
+                                      onChange={() => {
+                                        if (!editingEvent?.sections) return;
+
+                                        // Crear una copia profunda de las secciones
+                                        const updatedSections = { ...editingEvent.sections };
+
+                                        // Actualizar el estado de la sección específica
+                                        updatedSections[sectionKey] = {
+                                          ...section,
+                                          enabled: !section.enabled
+                                        };
+
+                                        // Actualizar el estado del evento
+                                        setEditingEvent({
+                                          ...editingEvent,
+                                          sections: updatedSections
+                                        });
+                                      }}
+                                      className="sr-only peer"
+                                      aria-label={`${section.title} - ${section.enabled ? 'Desactivar' : 'Activar'} sección`}
+                                    />
+                                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 peer-checked:ring-2 peer-checked:ring-blue-500/50 transition-colors duration-200 ease-in-out relative">
+                                      <div className={`absolute top-0.5 left-0.5 bg-white rounded-full h-5 w-5 transition-transform duration-200 ease-in-out ${section.enabled ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                                      <span className="sr-only">
+                                        {section.enabled ? 'Activado' : 'Desactivado'}
+                                      </span>
+                                    </div>
+                                    <span className="ml-2 text-sm font-medium text-slate-400">
                                       {section.enabled ? 'Activado' : 'Desactivado'}
                                     </span>
-                                  </div>
-                                  <span className="ml-2 text-sm font-medium text-slate-400">
-                                    {section.enabled ? 'Activado' : 'Desactivado'}
-                                  </span>
-                                </label>
-                              </div>
-                            ))}
-                          </div>
-                          
-                          <div className="pt-4 border-t border-slate-700 mt-6">
-                            <h5 className="text-sm font-medium text-slate-400 mb-3">Configuración Avanzada</h5>
-                            {editingEvent?.sections['gift-catalog']?.enabled && (
-                              <div className="space-y-3 bg-slate-800/50 p-4 rounded-lg mb-4">
-                                <h6 className="font-medium text-white">Configuración de Lista de Regalos</h6>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <label className="flex items-center space-x-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={(editingEvent.sections['gift-catalog'].config?.showCategories as boolean) ?? true}
-                                      onChange={(e) => {
-                                        const newConfig = {
-                                          ...editingEvent.sections['gift-catalog'].config,
-                                          showCategories: e.target.checked
-                                        };
-                                        setEditingEvent({
-                                          ...editingEvent,
-                                          sections: {
-                                            ...editingEvent.sections,
-                                            'gift-catalog': {
-                                              ...editingEvent.sections['gift-catalog'],
-                                              config: newConfig
-                                            }
-                                          }
-                                        });
-                                      }}
-                                      className="rounded border-slate-600 text-blue-500 focus:ring-blue-400"
-                                    />
-                                    <span className="text-sm text-slate-300">Mostrar categorías</span>
-                                  </label>
-                                  <label className="flex items-center space-x-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={(editingEvent.sections['gift-catalog'].config?.showStores as boolean) ?? true}
-                                      onChange={(e) => {
-                                        const newConfig = {
-                                          ...editingEvent.sections['gift-catalog'].config,
-                                          showStores: e.target.checked
-                                        };
-                                        setEditingEvent({
-                                          ...editingEvent,
-                                          sections: {
-                                            ...editingEvent.sections,
-                                            'gift-catalog': {
-                                              ...editingEvent.sections['gift-catalog'],
-                                              config: newConfig
-                                            }
-                                          }
-                                        });
-                                      }}
-                                      className="rounded border-slate-600 text-blue-500 focus:ring-blue-400"
-                                    />
-                                    <span className="text-sm text-slate-300">Mostrar tiendas</span>
                                   </label>
                                 </div>
-                              </div>
-                            )}
-                            
-                            {editingEvent?.sections?.['predictions']?.enabled && (
-                              <div className="space-y-3 bg-slate-800/50 p-4 rounded-lg">
-                                <h6 className="font-medium text-white">Configuración de Predicciones</h6>
-                                <div className="space-y-2">
-                                  <label className="flex items-center space-x-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={(editingEvent.sections['predictions']?.config?.allowNameSuggestions as boolean) ?? true}
-                                      onChange={(e) => {
-                                        if (!editingEvent?.sections?.['predictions']) return;
-                                        
-                                        const newConfig = {
-                                          ...editingEvent.sections['predictions']?.config,
-                                          allowNameSuggestions: e.target.checked
-                                        } as Record<string, unknown>;
-                                        
-                                        setEditingEvent(prev => {
-                                          if (!prev) return prev;
-                                          return {
-                                            ...prev,
+                              ))}
+                            </div>
+
+                            <div className="pt-4 border-t border-slate-700 mt-6">
+                              <h5 className="text-sm font-medium text-slate-400 mb-3">Configuración Avanzada</h5>
+                              {editingEvent?.sections['gift-catalog']?.enabled && (
+                                <div className="space-y-3 bg-slate-800/50 p-4 rounded-lg mb-4">
+                                  <h6 className="font-medium text-white">Configuración de Lista de Regalos</h6>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <label className="flex items-center space-x-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={(editingEvent.sections['gift-catalog'].config?.showCategories as boolean) ?? true}
+                                        onChange={(e) => {
+                                          const newConfig = {
+                                            ...editingEvent.sections['gift-catalog'].config,
+                                            showCategories: e.target.checked
+                                          };
+                                          setEditingEvent({
+                                            ...editingEvent,
                                             sections: {
-                                              ...prev.sections,
-                                              predictions: {
-                                                ...prev.sections?.['predictions'],
+                                              ...editingEvent.sections,
+                                              'gift-catalog': {
+                                                ...editingEvent.sections['gift-catalog'],
                                                 config: newConfig
                                               }
                                             }
+                                          });
+                                        }}
+                                        className="rounded border-slate-600 text-blue-500 focus:ring-blue-400"
+                                      />
+                                      <span className="text-sm text-slate-300">Mostrar categorías</span>
+                                    </label>
+                                    <label className="flex items-center space-x-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={(editingEvent.sections['gift-catalog'].config?.showStores as boolean) ?? true}
+                                        onChange={(e) => {
+                                          const newConfig = {
+                                            ...editingEvent.sections['gift-catalog'].config,
+                                            showStores: e.target.checked
                                           };
-                                        });
-                                      }}
-                                      className="rounded border-slate-600 text-blue-500 focus:ring-blue-400"
-                                    />
-                                    <span className="text-sm text-slate-300">Permitir sugerencias de nombres</span>
-                                  </label>
+                                          setEditingEvent({
+                                            ...editingEvent,
+                                            sections: {
+                                              ...editingEvent.sections,
+                                              'gift-catalog': {
+                                                ...editingEvent.sections['gift-catalog'],
+                                                config: newConfig
+                                              }
+                                            }
+                                          });
+                                        }}
+                                        className="rounded border-slate-600 text-blue-500 focus:ring-blue-400"
+                                      />
+                                      <span className="text-sm text-slate-300">Mostrar tiendas</span>
+                                    </label>
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
+
+                              {editingEvent?.sections?.['predictions']?.enabled && (
+                                <div className="space-y-3 bg-slate-800/50 p-4 rounded-lg">
+                                  <h6 className="font-medium text-white">Configuración de Predicciones</h6>
+                                  <div className="space-y-2">
+                                    <label className="flex items-center space-x-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={(editingEvent.sections['predictions']?.config?.allowNameSuggestions as boolean) ?? true}
+                                        onChange={(e) => {
+                                          if (!editingEvent?.sections?.['predictions']) return;
+
+                                          const newConfig = {
+                                            ...editingEvent.sections['predictions']?.config,
+                                            allowNameSuggestions: e.target.checked
+                                          } as Record<string, unknown>;
+
+                                          setEditingEvent(prev => {
+                                            if (!prev) return prev;
+                                            return {
+                                              ...prev,
+                                              sections: {
+                                                ...prev.sections,
+                                                predictions: {
+                                                  ...prev.sections?.['predictions'],
+                                                  config: newConfig
+                                                }
+                                              }
+                                            };
+                                          });
+                                        }}
+                                        className="rounded border-slate-600 text-blue-500 focus:ring-blue-400"
+                                      />
+                                      <span className="text-sm text-slate-300">Permitir sugerencias de nombres</span>
+                                    </label>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
                       </form>
                     </div>
-                    
+
                     {/* Sticky Footer */}
                     <div className="sticky bottom-0 border-t border-slate-700 p-4 bg-slate-800">
                       <div className="flex justify-end space-x-3">
