@@ -153,11 +153,6 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
       
       setIsSuccess(true);
       
-      // Auto close after showing success
-      setTimeout(() => {
-        onClose();
-      }, 2000);
-      
     } catch (error) {
       console.error('Reservation error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Hubo un error al procesar tu reserva. Intenta nuevamente.';
@@ -170,7 +165,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
   const generateWhatsAppMessage = () => {
     const eventTitle = currentEvent?.title || 'el evento';
     const message = `¡Hola! He reservado el regalo "${product.name}" para ${eventTitle}. 
-    
+
 Detalles:
 - Producto: ${product.name}
 - Cantidad: ${formData.quantity}
@@ -200,9 +195,16 @@ Detalles:
             <Button
               onClick={() => window.open(generateWhatsAppMessage(), '_blank')}
               variant="secondary"
-              className="w-full"
+              className="w-full mb-2"
             >
               Compartir por WhatsApp
+            </Button>
+            <Button
+              onClick={onClose}
+              variant="outline"
+              className="w-full"
+            >
+              Cerrar
             </Button>
           </div>
         </Card>

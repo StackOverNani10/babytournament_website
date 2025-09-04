@@ -46,7 +46,8 @@ const mapDbProductToAppProduct = (dbProduct: any): Product => ({
   suggestedQuantity: dbProduct.suggested_quantity || 1,
   maxQuantity: dbProduct.max_quantity || 1,
   eventType: Array.isArray(dbProduct.event_type) ? dbProduct.event_type : (dbProduct.event_type ? [dbProduct.event_type] : []),
-  isActive: dbProduct.is_active !== false // Default to true if not specified
+  isActive: dbProduct.is_active !== false, // Default to true if not specified
+  productUrl: dbProduct.product_url || undefined
 });
 
 // Helper function to map database category to app category type
@@ -62,7 +63,8 @@ const mapDbStoreToAppStore = (dbStore: any): Store => ({
   id: dbStore.id,
   name: dbStore.name,
   logo: dbStore.logo || undefined,
-  website: dbStore.website || undefined
+  website: dbStore.website || undefined,
+  color: dbStore.color || undefined
 });
 
 type Theme = 'boy' | 'girl' | 'neutral';

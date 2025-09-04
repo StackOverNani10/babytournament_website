@@ -5,13 +5,18 @@ interface BadgeProps {
   variant?: 'primary' | 'secondary' | 'success' | 'warning' | 'error';
   size?: 'sm' | 'md';
   className?: string;
+  customColor?: {
+    background: string;
+    text: string;
+  };
 }
 
 const Badge: React.FC<BadgeProps> = ({ 
   children, 
   variant = 'primary', 
   size = 'md', 
-  className = '' 
+  className = '',
+  customColor 
 }) => {
   const variants = {
     primary: 'bg-pink-100 text-pink-800',
@@ -26,8 +31,18 @@ const Badge: React.FC<BadgeProps> = ({
     md: 'px-2.5 py-1 text-sm'
   };
 
+  const baseClasses = 'inline-flex items-center font-medium rounded-full';
+  const variantClasses = customColor ? '' : variants[variant];
+  const sizeClasses = sizes[size];
+  
   return (
-    <span className={`inline-flex items-center font-medium rounded-full ${variants[variant]} ${sizes[size]} ${className}`}>
+    <span 
+      className={`${baseClasses} ${variantClasses} ${sizeClasses} ${className}`}
+      style={customColor ? {
+        backgroundColor: customColor.background,
+        color: customColor.text
+      } : undefined}
+    >
       {children}
     </span>
   );
