@@ -16,12 +16,31 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, theme = 'neutral' })
   const { categories, stores, getAvailableQuantity, isProductAvailable, getProductReservations } = useApp();
   const [showModal, setShowModal] = useState(false);
 
-  const category = categories.find(c => c.id === product.categoryId);
+  // Helper function to determine text color based on background color
+  const getContrastColor = (hexColor?: string) => {
+    if (!hexColor) return 'white';
+    
+    // Convert hex to RGB
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    
+    // Calculate luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    
+    // Use black text for light colors, white for dark colors
+    return luminance > 0.5 ? 'black' : 'white';
+  };
+
   const store = stores.find(s => s.id === product.storeId);
+  const category = categories.find(c => c.id === product.categoryId);
   const availableQuantity = getAvailableQuantity(product.id);
   const isAvailable = isProductAvailable(product.id);
-  const reservations = getProductReservations(product.id);
-  const totalReserved = reservations.reduce((sum, r) => sum + r.quantity, 0);
+  const productReservations = getProductReservations(product.id);
+  const totalReserved = productReservations.reduce((sum, r) => sum + r.quantity, 0);
+  
+  // Get the appropriate URL for the product
+  const productUrl = product.productUrl || store?.website;
 
   const getAvailabilityStatus = () => {
     if (!isAvailable) {
@@ -129,17 +148,24 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, theme = 'neutral' })
             </div>
 
             {/* Price and Store */}
-            <div className="flex items-center justify-between pt-2">
-              <span className={`text-2xl font-bold ${themeColors.price}`}>${product.price.toFixed(2)}</span>
-              <Button
-                className={`${themeColors.button} transition-colors`}
-                size="sm"
-                icon={ShoppingBag}
-                onClick={() => setShowModal(true)}
-                disabled={!isAvailable}
-              >
-                Reservar
-              </Button>
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between">
+                <span className={`text-2xl font-bold ${themeColors.price}`}>${product.price.toFixed(2)}</span>
+              </div>
+              {store && (
+                <div className="mt-1">
+                  <Badge 
+                    className={`font-medium ${!store.color ? themeColors.badge : ''}`}
+                    size="sm"
+                    customColor={store.color ? {
+                      background: store.color,
+                      text: getContrastColor(store.color)
+                    } : undefined}
+                  >
+                    {store.name}
+                  </Badge>
+                </div>
+              )}
             </div>
 
             {/* Suggested Quantity */}
@@ -187,20 +213,33 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, theme = 'neutral' })
                 variant="outline"
                 size="sm"
                 icon={ExternalLink}
-                onClick={() => store?.website && window.open(store.website, '_blank')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const url = product.productUrl || store?.website;
+                  if (url) {
+                    // Ensure the URL has a protocol
+                    const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
+                    window.open(formattedUrl, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+                disabled={!productUrl}
+                title={productUrl ? 'Ver producto en la tienda' : 'No hay enlace disponible'}
                 className={`px-3 ${
+                  !productUrl ? 'opacity-50 cursor-not-allowed' : ''
+                } ${
                   theme === 'boy' ? 'border-blue-600 text-blue-600 hover:bg-blue-50' :
                   theme === 'girl' ? 'border-pink-600 text-pink-600 hover:bg-pink-50' :
                   'border-yellow-600 text-yellow-600 hover:bg-yellow-50'
                 }`}
               >
+                Ver
               </Button>
             </div>
 
             {/* Reserved by count */}
-            {reservations.length > 0 && (
+            {productReservations.length > 0 && (
               <div className="text-xs text-gray-500 text-center pt-2 mt-2">
-                Reservado por {reservations.length} {reservations.length === 1 ? 'invitado' : 'invitados'}
+                Reservado por {productReservations.length} {productReservations.length === 1 ? 'invitado' : 'invitados'}
               </div>
             )}
           </div>

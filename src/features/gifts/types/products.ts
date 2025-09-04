@@ -12,6 +12,7 @@ export interface Store {
   name: string;
   logo?: string;
   website?: string;
+  color?: string;
 }
 
 export interface Product {
@@ -26,4 +27,5 @@ export interface Product {
   maxQuantity?: number;
   eventType?: EventType[];
   isActive: boolean;
+  productUrl?: string;
 }
