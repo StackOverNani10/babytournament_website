@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, MapPin, Clock, Share2, QrCode } from 'lucide-react';
+import { Calendar, MapPin, Clock, Share2 } from 'lucide-react';
 import { Event } from '../../../types';
 import Button from '../../../components/ui/Button';
 
@@ -193,15 +193,6 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
                 className={`flex-1 sm:flex-none justify-center ${buttonColors.primary} transition-colors ${buttonColors.focus}`}
               >
                 Compartir Evento
-              </Button>
-              
-              <Button 
-                variant="outline"
-                size="md"
-                icon={QrCode}
-                className={`flex-1 sm:flex-none justify-center ${buttonColors.outline} transition-colors ${buttonColors.focus}`}
-              >
-                Código QR
               </Button>
             </div>
           </div>

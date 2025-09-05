@@ -101,7 +101,7 @@ interface AppProviderProps {
 }
 
 export function AppProvider({ children }: AppProviderProps) {
-  const [reservations, setReservations] = useLocalStorage<GiftReservation[]>('gift-reservations', []);
+  const [reservations, setReservations] = useState<GiftReservation[]>([]);
   const [predictions, setPredictions] = useState<GenderPrediction[]>([]);
   const [selectedTheme, setSelectedTheme] = useLocalStorage<Theme>('selected-theme', 'neutral');
   const resolveRef = useRef<((value: any) => void) | null>(null);
@@ -114,7 +114,7 @@ export function AppProvider({ children }: AppProviderProps) {
     onConfirm: async () => { },
     onCancel: () => { }
   });
-
+  
   // Function to show confirmation dialog
   const showConfirmDialog = useCallback(<T = void>(title: string, message: string, onConfirm: () => Promise<T>): Promise<T | false> => {
     return new Promise<T | false>((resolve) => {
@@ -150,6 +150,7 @@ export function AppProvider({ children }: AppProviderProps) {
         onConfirm: handleConfirm,
         onCancel: handleCancel
       });
+      
 
       // Show the confirmation dialog
       setShowConfirmation(true);
@@ -229,6 +230,51 @@ export function AppProvider({ children }: AppProviderProps) {
     }
   }, [currentEvent?.id, setPredictions, setError]);
 
+  const fetchReservations = useCallback(async () => {
+    try {
+      const { data: reservations, error } = await supabase
+        .from('reservations')
+        .select('*');
+      
+      if (error) throw error;
+      if (!reservations) return [];
+      
+      // Get all unique guest IDs
+      const guestIds = [...new Set(reservations.map(r => r.guest_id))];
+      
+      // Fetch all guests in one query
+      const { data: guests, error: guestsError } = await supabase
+        .from('guests')
+        .select('*')
+        .in('id', guestIds);
+      
+      if (guestsError) throw guestsError;
+      
+      // Create a map of guest ID to guest data for quick lookup
+      const guestsMap = new Map(guests?.map(g => [g.id, g]) || []);
+      
+      // Map reservations with guest data
+      return reservations.map(reservation => {
+        const guestData = guestsMap.get(reservation.guest_id);
+        return {
+          id: reservation.id,
+          productId: reservation.product_id,
+          eventId: guestData?.event_id || '',
+          guestName: guestData?.name || 'Guest',
+          guestEmail: guestData?.email || '',
+          status: reservation.status as 'pending' | 'confirmed' | 'cancelled',
+          quantity: reservation.quantity || 1,
+          createdAt: reservation.created_at || new Date().toISOString(),
+          updatedAt: reservation.updated_at || new Date().toISOString()
+        };
+      });
+    } catch (err) {
+      console.error('Error fetching reservations:', err);
+      setError('Error al cargar las reservaciones');
+      return [];
+    }
+  }, []);
+
   // Fetch data on component mount
   useEffect(() => {
     const fetchData = async () => {
@@ -237,11 +283,18 @@ export function AppProvider({ children }: AppProviderProps) {
         setIsLoading(true);
 
         // Fetch all data in parallel
-        const [eventsData, productsData, categoriesData, storesData] = await Promise.all([
+        const [
+          eventsData, 
+          productsData, 
+          categoriesData, 
+          storesData,
+          reservationsData
+        ] = await Promise.all([
           dataService.fetchAll('events'),
           dataService.fetchAll('products'),
           dataService.fetchAll('categories'),
-          dataService.fetchAll('stores')
+          dataService.fetchAll('stores'),
+          fetchReservations()
         ]);
 
         // Map database data to application types
@@ -272,6 +325,7 @@ export function AppProvider({ children }: AppProviderProps) {
         setProducts(mappedProducts);
         setCategories(mappedCategories);
         setStores(mappedStores);
+        setReservations(reservationsData || []);
         setError(null);
       } catch (err) {
         console.error('Error fetching data:', err);
@@ -286,9 +340,17 @@ export function AppProvider({ children }: AppProviderProps) {
 
   // Set the first event as active by default if none is active
   useEffect(() => {
-    if (events.length > 0 && !currentEvent) {
-      const activeEvent = events.find(event => event.isActive) || events[0];
-      setCurrentEvent(activeEvent);
+    console.log('Events loaded:', events);
+    if (events.length > 0) {
+      console.log('Looking for active event...');
+      const activeEvent = events.find(event => event.isActive);
+      console.log('Active event found:', activeEvent);
+      
+      if (!currentEvent) {
+        const eventToSet = activeEvent || events[0];
+        console.log('Setting current event to:', eventToSet);
+        setCurrentEvent(eventToSet);
+      }
     }
   }, [events, currentEvent]);
 
@@ -301,7 +363,10 @@ export function AppProvider({ children }: AppProviderProps) {
 
   const addReservation = useCallback(async (reservation: Omit<GiftReservation, 'id' | 'createdAt' | 'updatedAt' | 'status'>): Promise<GiftReservation | null> => {
     try {
+      console.log('Attempting to make reservation. Current event:', currentEvent);
       if (!currentEvent) {
+        console.error('No current event when trying to make reservation');
+        console.log('Available events:', events);
         throw new Error('No hay un evento activo');
       }
 
@@ -330,22 +395,23 @@ export function AppProvider({ children }: AppProviderProps) {
         .single();
 
       let guestData;
-      
+
+      // Manejar invitado existente
       if (existingGuest) {
         // Update existing guest
-        const { error: updateError } = await supabase
+              const { error: updateError } = await supabase
           .from('guests')
-          .update({
+                .update({
             name: reservation.guestName.trim(),
-            updated_at: new Date().toISOString()
-          })
+                  updated_at: new Date().toISOString()
+                })
           .eq('id', existingGuest.id);
-          
-        if (updateError) throw updateError;
+              
+              if (updateError) throw updateError;
         // Use the existing guest data since the update doesn't return the updated row
         guestData = { ...existingGuest, name: reservation.guestName.trim() };
       } else {
-        // Create new guest
+        // Crear nuevo invitado
         const { data: newGuest, error: createError } = await supabase
           .from('guests')
           .insert({
@@ -358,7 +424,7 @@ export function AppProvider({ children }: AppProviderProps) {
           })
           .select()
           .single();
-          
+
         if (createError) throw createError;
         guestData = newGuest;
       }
@@ -407,9 +473,9 @@ export function AppProvider({ children }: AppProviderProps) {
       console.error('Error adding reservation:', error);
       throw error;
     }
-  }, [currentEvent, setReservations]);
+  }, [fetchReservations]);
 
-  const addPrediction = useCallback(async (prediction: Omit<GenderPrediction, 'id' | 'createdAt' | 'guest_id'> & { guest_name: string; guest_email: string }): Promise<GenderPrediction | null> => {
+  const addPrediction = useCallback(async (prediction: Omit<GenderPrediction, 'id' | 'createdAt' | 'guest_id'> & { guest_name: string; guest_email: string }) => {
     if (!currentEvent) {
       throw new Error('No hay un evento activo');
     }
@@ -557,24 +623,24 @@ export function AppProvider({ children }: AppProviderProps) {
     setReservations(prev => prev.filter(r => r.id !== id));
   };
 
-  const getAvailableQuantity = (productId: string) => {
+  const getAvailableQuantity = useCallback((productId: string) => {
     const product = products.find(p => p.id === productId);
-    if (!product?.maxQuantity) return 999;
+    if (!product) return 0;
+    
+    const reservedQuantity = reservations
+      .filter(r => r.productId === productId && r.status !== 'cancelled')
+      .reduce((sum, r) => sum + (r.quantity || 1), 0);
+      
+    return Math.max(0, (product.maxQuantity || 1) - reservedQuantity);
+  }, [products, reservations]);
 
-    const totalReserved = reservations
-      .filter(r => r.productId === productId && r.status === 'reserved')
-      .reduce((sum, r) => sum + r.quantity, 0);
-
-    return Math.max(0, product.maxQuantity - totalReserved);
-  };
-
-  const isProductAvailable = (productId: string) => {
+  const isProductAvailable = useCallback((productId: string) => {
     return getAvailableQuantity(productId) > 0;
-  };
+  }, [getAvailableQuantity]);
 
-  const getProductReservations = (productId: string) => {
-    return reservations.filter(r => r.productId === productId && r.status === 'reserved');
-  };
+  const getProductReservations = useCallback((productId: string) => {
+    return reservations.filter(r => r.productId === productId);
+  }, [reservations]);
 
   const updateEvent = (id: string, updates: Partial<Event>) => {
     setEvents(prevEvents =>
