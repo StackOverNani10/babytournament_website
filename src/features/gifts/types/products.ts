@@ -23,7 +23,7 @@ export interface Product {
   price: number;
   imageUrl: string;
   description?: string;
-  suggestedQuantity: number;
+  suggestedQuantity?: number;
   maxQuantity?: number;
   eventType?: EventType[];
   isActive: boolean;
