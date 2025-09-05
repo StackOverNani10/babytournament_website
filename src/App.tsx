@@ -1,4 +1,4 @@
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
@@ -40,7 +40,7 @@ const HomePageContent: React.FC = () => {
 
   const handlePredictionClick = () => {
     if (selectedTheme === 'neutral') {
-      alert('¡Primero elige si crees que será niño o niña! 😊');
+      toast.info('¡Primero elige si crees que será niño o niña! 😊');
       return;
     }
     setShowPredictionModal(true);

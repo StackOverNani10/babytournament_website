@@ -3,13 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { useEvents } from '../../../context/events/EventsContext';
 import { useReservations } from '../../../context/reservations/ReservationsContext';
 import { useApp } from '../../../context/AppContext';
-import { EventSections } from '@/features/event/types/events';
+import { usePredictions } from '../../../context/predictions/PredictionsContext';
+import { Event, EventType } from '../../event/types/events';
+import { Product, Category, Store } from '../../gifts/types/products';
+import Layout from '../../../components/layout/Layout';
+import Button from '../../../components/ui/Button';
+import { BarChart3, Users, Gift, LogOut, TrendingUp, Filter, X } from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 
 // Interfaces para las secciones
-type SectionConfig = {
-  [key: string]: any;
-};
-
 interface Section {
   id: string;
   title: string;
@@ -23,13 +26,6 @@ interface Section {
 interface Sections {
   [key: string]: Section;
 }
-import { usePredictions } from '../../../context/predictions/PredictionsContext';
-import { Event, EventType } from '../../event/types/events';
-import { Product } from '../../gifts/types/products';
-import Layout from '../../../components/layout/Layout';
-import Button from '../../../components/ui/Button';
-import { BarChart3, Users, Gift, LogOut, TrendingUp } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
 
 // Standalone interface for predictions with guest info
 interface Guest {
@@ -167,6 +163,52 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   };
   type TabType = 'overview' | 'reservations' | 'predictions' | 'products' | 'events';
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [showFilter, setShowFilter] = useState(false);
+  const [filters, setFilters] = useState({
+    eventType: '' as EventType | '',
+    minPrice: '',
+    maxPrice: '',
+    inStock: false,
+    lowStock: false
+  });
+
+  // State for product management
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isViewingProduct, setIsViewingProduct] = useState(false);
+  const [isEditingProduct, setIsEditingProduct] = useState(false);
+
+  // Initialize a new product with default values
+  const initializeNewProduct = () => {
+    const defaultProduct: Product = {
+      id: '',
+      name: '',
+      categoryId: '',
+      storeId: '',
+      price: 0,
+      imageUrl: '',
+      description: '',
+      suggestedQuantity: 1,
+      maxQuantity: 10,
+      eventType: [],
+      isActive: true,
+      productUrl: ''
+    };
+    
+    setSelectedProduct(defaultProduct);
+    setIsEditingProduct(true);
+    setIsViewingProduct(false);
+  };
+
+  // Helper function to get product details
+  const getProductDetails = (product: Product) => {
+    const productReservations = reservations.filter(r => r.productId === product.id);
+    const totalReserved = productReservations.reduce((sum, r) => sum + r.quantity, 0);
+    const maxQty = product.maxQuantity || 10;
+    const progress = Math.min((totalReserved / maxQty) * 100, 100);
+    const isLowStock = totalReserved >= maxQty * 0.8;
+
+    return { totalReserved, maxQty, progress, isLowStock };
+  };
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [activeTabInEditor, setActiveTabInEditor] = useState<'details' | 'sections'>('details');
@@ -219,6 +261,142 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
     }))
     .sort((a: { product: Product; reservations: number }, b: { product: Product; reservations: number }) => b.reservations - a.reservations)
     .slice(0, 5);
+
+  // State for data management
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+
+
+  // Fetch categories, stores, and events
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch categories
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('categories')
+          .select('*')
+          .order('name');
+
+        // Fetch stores
+        const { data: storesData, error: storesError } = await supabase
+          .from('stores')
+          .select('*')
+          .order('name');
+
+        // We don't need to fetch events here since we're using them from the useEvents hook
+        if (categoriesError) throw categoriesError;
+        if (storesError) throw storesError;
+
+        setCategories(categoriesData || []);
+        setStores(storesData || []);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleSaveProduct = async (e?: React.FormEvent) => {
+    // Prevenir el comportamiento por defecto del formulario
+    if (e) {
+      e.preventDefault();
+    }
+    if (!selectedProduct) {
+      console.error('No product selected');
+      return;
+    }
+
+    try {
+      // Validar campos requeridos
+      if (!selectedProduct.name.trim()) {
+        throw new Error('El nombre del producto es requerido');
+      }
+      if (selectedProduct.price === undefined || selectedProduct.price < 0) {
+        throw new Error('El precio debe ser un número positivo');
+      }
+      if (!selectedProduct.imageUrl) {
+        throw new Error('La URL de la imagen es requerida');
+      }
+
+      // Prepare the product data with proper types and field names
+      const productData: any = {
+        // Only include the ID if it exists (for updates)
+        ...(selectedProduct.id && { id: selectedProduct.id }),
+        
+        // Required fields
+        name: selectedProduct.name.trim(),
+        price: Number(selectedProduct.price) || 0,
+        
+        // Optional fields with proper snake_case names
+        ...(selectedProduct.categoryId && { category_id: selectedProduct.categoryId }),
+        ...(selectedProduct.storeId && { store_id: selectedProduct.storeId }),
+        image_url: selectedProduct.imageUrl, // Hacer obligatorio
+        ...(selectedProduct.description && { description: selectedProduct.description }),
+        suggested_quantity: selectedProduct.suggestedQuantity !== undefined 
+          ? Number(selectedProduct.suggestedQuantity) 
+          : 1,
+        max_quantity: selectedProduct.maxQuantity !== undefined 
+          ? Number(selectedProduct.maxQuantity) 
+          : 10,
+        event_type: Array.isArray(selectedProduct.eventType) 
+          ? selectedProduct.eventType.filter(Boolean) 
+          : [],
+        is_active: selectedProduct.isActive !== false,
+        
+        // Include product_url if it exists
+        ...(selectedProduct.productUrl && { product_url: selectedProduct.productUrl })
+      };
+
+      console.log('Saving product:', productData);
+
+      let result;
+      if (selectedProduct.id) {
+        // Actualizar producto existente
+        const { data, error } = await supabase
+          .from('products')
+          .update(productData)
+          .eq('id', selectedProduct.id)
+          .select();
+        
+        if (error) throw error;
+        result = data?.[0];
+      } else {
+        // Crear nuevo producto
+        const { data, error } = await supabase
+          .from('products')
+          .insert([productData])
+          .select();
+        
+        if (error) throw error;
+        result = data?.[0];
+      }
+
+      if (!result) {
+        throw new Error('No se pudo guardar el producto');
+      }
+
+      // Mostrar mensaje de éxito
+      toast.success(selectedProduct.id 
+        ? '¡Producto actualizado exitosamente!' 
+        : '¡Producto creado exitosamente!');
+      
+      // Cerrar el formulario y actualizar la lista de productos
+      setIsEditingProduct(false);
+      setSelectedProduct(null);
+      
+      // Recargar los productos para reflejar los cambios
+      // Esto asume que tienes una función para cargar los productos
+      // Si no la tienes, puedes recargar la página o implementar otra lógica de actualización
+      window.location.reload();
+    } catch (error) {
+      console.error('Error saving product:', error);
+      toast.error(`Error al guardar el producto: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      
+      // Mantener el formulario abierto para que el usuario pueda corregir los errores
+      return;
+    }
+  };
 
   return (
     <Layout>
@@ -346,7 +524,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                         </div>
                         <div className="w-full bg-slate-700 rounded-full h-1.5">
                           <div
-                            className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full"
+                            className={`h-full rounded-full transition-all duration-500 ${progress >= 80 ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gradient-to-r from-blue-500 to-emerald-500'
+                              }`}
                             style={{ width: `${progress}%` }}
                           />
                         </div>
@@ -510,85 +689,709 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
           {/* Products Tab */}
           {activeTab === 'products' && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                 <h4 className="text-xl font-semibold text-white">
                   Gestión de Productos
                 </h4>
-                <Button
-                  onClick={() => { }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  Agregar Producto
-                </Button>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowFilter(!showFilter)}
+                    className="flex items-center gap-2 text-slate-300 border-slate-600 hover:bg-slate-700"
+                  >
+                    {showFilter ? (
+                      <>
+                        <X size={16} />
+                        Ocultar Filtros
+                      </>
+                    ) : (
+                      <>
+                        <Filter size={16} />
+                        Filtrar Productos
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={initializeNewProduct}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    Agregar Producto
+                  </Button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {products.map((product) => {
-                  const productReservations = reservations.filter(r => r.productId === product.id);
-                  const totalReserved = productReservations.reduce((sum, r) => sum + r.quantity, 0);
-                  const maxQty = product.maxQuantity || 10;
-                  const progress = Math.min((totalReserved / maxQty) * 100, 100);
-                  const isLowStock = totalReserved >= maxQty * 0.8;
-
-                  return (
-                    <div
-                      key={product.id}
-                      className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-slate-600 transition-colors"
-                    >
-                      <div className="h-36 bg-slate-700 overflow-hidden">
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+              {/* Filtros */}
+              {showFilter && (
+                <div className="bg-slate-800/50 p-4 rounded-lg mb-6 border border-slate-700">
+                  <h5 className="text-sm font-medium text-slate-300 mb-3">Filtros de Productos</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-1">Evento</label>
+                      <select
+                        value={filters.eventType}
+                        onChange={(e) => setFilters({ ...filters, eventType: e.target.value as EventType })}
+                        className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Todos los eventos</option>
+                        {events.map((event) => (
+                          <option key={event.id} value={event.type}>
+                            {event.title} ({event.type})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-1">Precio Mínimo</label>
+                      <input
+                        type="number"
+                        value={filters.minPrice}
+                        onChange={(e) => setFilters({ ...filters, minPrice: e.target.value })}
+                        placeholder="Mínimo"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-1">Precio Máximo</label>
+                      <input
+                        type="number"
+                        value={filters.maxPrice}
+                        onChange={(e) => setFilters({ ...filters, maxPrice: e.target.value })}
+                        placeholder="Máximo"
+                        className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-end gap-4">
+                      <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={filters.inStock}
+                          onChange={(e) => setFilters({ ...filters, inStock: e.target.checked })}
+                          className="rounded border-slate-600 text-blue-500 focus:ring-blue-500"
                         />
-                      </div>
+                        Solo en stock
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={filters.lowStock}
+                          onChange={(e) => setFilters({ ...filters, lowStock: e.target.checked })}
+                          className="rounded border-slate-600 text-orange-500 focus:ring-orange-500"
+                        />
+                        Bajo stock
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                      <div className="p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h5 className="font-bold text-white text-lg">
-                            {product.name}
-                          </h5>
-                          <span className="text-sm font-bold text-blue-400">
-                            ${product.price.toFixed(2)}
-                          </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {products
+                  .filter(product => {
+                    const filteredEvents = events
+                      .filter((event) => {
+                        if (filters.eventType && event.type !== filters.eventType) return false;
+                        return true;
+                      });
+                    // Filtrar por tipo de evento
+                    if (filters.eventType && !filteredEvents.some(event => event.type === filters.eventType)) return false;
+
+                    // Filtrar por rango de precios
+                    if (filters.minPrice && product.price < Number(filters.minPrice)) return false;
+                    if (filters.maxPrice && product.price > Number(filters.maxPrice)) return false;
+
+                    // Filtrar por disponibilidad
+                    const productReservations = reservations.filter(r => r.productId === product.id);
+                    const totalReserved = productReservations.reduce((sum, r) => sum + r.quantity, 0);
+                    const maxQty = product.maxQuantity || 10;
+
+                    if (filters.inStock && totalReserved >= maxQty) return false;
+                    if (filters.lowStock && totalReserved < maxQty * 0.8) return false;
+
+                    return true;
+                  })
+                  .map((product) => {
+                    const productReservations = reservations.filter(r => r.productId === product.id);
+                    const totalReserved = productReservations.reduce((sum, r) => sum + r.quantity, 0);
+                    const maxQty = product.maxQuantity || 10;
+                    const progress = Math.min((totalReserved / maxQty) * 100, 100);
+                    const isLowStock = totalReserved >= maxQty * 0.8;
+
+                    return (
+                      <div
+                        key={product.id}
+                        className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden hover:border-slate-600 transition-colors"
+                      >
+                        <div className="h-36 bg-slate-700 overflow-hidden">
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                          />
                         </div>
 
-                        <div className="mb-3">
-                          <div className="flex justify-between text-xs text-slate-400 mb-1">
-                            <span>Reservados: {totalReserved}/{maxQty}</span>
-                            <span className={isLowStock ? 'text-red-400' : 'text-emerald-400'}>
-                              {isLowStock ? '¡Poco Stock!' : 'Disponible'}
+                        <div className="p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <h5 className="font-bold text-white text-lg">
+                              {product.name}
+                            </h5>
+                            <span className="text-sm font-bold text-blue-400">
+                              ${product.price.toFixed(2)}
                             </span>
                           </div>
-                          <div className="w-full bg-slate-700 rounded-full h-2">
-                            <div
-                              className={`h-full rounded-full transition-all duration-500 ${isLowStock ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gradient-to-r from-blue-500 to-emerald-500'
-                                }`}
-                              style={{ width: `${progress}%` }}
+
+                          <div className="mb-3">
+                            <div className="flex justify-between text-xs text-slate-400 mb-1">
+                              <span>Reservados: {totalReserved}/{maxQty}</span>
+                              <span className={isLowStock ? 'text-red-400' : 'text-emerald-400'}>
+                                {isLowStock ? '¡Poco Stock!' : 'Disponible'}
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-700 rounded-full h-2">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${isLowStock ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gradient-to-r from-blue-500 to-emerald-500'
+                                  }`}
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 mt-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500"
+                              onClick={() => {
+                                setSelectedProduct(product);
+                                setIsEditingProduct(true);
+                              }}
+                            >
+                              Editar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500"
+                              onClick={() => {
+                                setSelectedProduct(product);
+                                setIsViewingProduct(true);
+                              }}
+                            >
+                              Ver Detalles
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Edit Product Modal */}
+          {isEditingProduct && selectedProduct && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+              <div className="bg-slate-800 rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="sticky top-0 z-10 bg-slate-800 pt-6 px-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-white">
+                      Editar Producto
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingProduct(false);
+                        setSelectedProduct(null);
+                      }}
+                      className="text-gray-400 hover:text-white"
+                    >
+                      <span className="sr-only">Cerrar</span>
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto flex-1">
+                  <form onSubmit={handleSaveProduct} className="space-y-6">
+                    {/* Sección de información básica */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium text-white border-b border-slate-700 pb-2">Información Básica</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1">
+                              Nombre del Producto <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={selectedProduct.name}
+                              onChange={(e) =>
+                                setSelectedProduct({
+                                  ...selectedProduct,
+                                  name: e.target.value,
+                                })
+                              }
+                              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                              required
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1">
+                              Categoría
+                            </label>
+                            <select
+                              value={selectedProduct.categoryId || ''}
+                              onChange={(e) =>
+                                setSelectedProduct({
+                                  ...selectedProduct,
+                                  categoryId: e.target.value,
+                                })
+                              }
+                              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            >
+                              <option value="">Seleccionar categoría</option>
+                              {categories.map((category) => (
+                                <option key={category.id} value={category.id}>
+                                  {category.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1">
+                              Tienda
+                            </label>
+                            <select
+                              value={selectedProduct.storeId || ''}
+                              onChange={(e) =>
+                                setSelectedProduct({
+                                  ...selectedProduct,
+                                  storeId: e.target.value,
+                                })
+                              }
+                              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            >
+                              <option value="">Seleccionar tienda</option>
+                              {stores.map((store) => (
+                                <option key={store.id} value={store.id}>
+                                  {store.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1">
+                              URL del Producto
+                            </label>
+                            <input
+                              type="url"
+                              value={selectedProduct.productUrl || ''}
+                              onChange={(e) =>
+                                setSelectedProduct({
+                                  ...selectedProduct,
+                                  productUrl: e.target.value,
+                                })
+                              }
+                              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                              placeholder="https://ejemplo.com/producto"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sección de precios e inventario */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium text-white border-b border-slate-700 pb-2">Precio e Inventario</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-400 mb-1">
+                            Precio <span className="text-red-500">*</span>
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2.5 text-slate-400">$</span>
+                            <input
+                              type="number"
+                              value={selectedProduct.price === 0 ? '' : selectedProduct.price}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setSelectedProduct({
+                                  ...selectedProduct,
+                                  price: value === '' ? 0 : parseFloat(value) || 0,
+                                });
+                              }}
+                              onBlur={(e) => {
+                                if (e.target.value === '') {
+                                  setSelectedProduct({
+                                    ...selectedProduct,
+                                    price: 0
+                                  });
+                                }
+                              }}
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              className="w-full bg-slate-700 border border-slate-600 rounded-lg pl-8 pr-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                              required
                             />
                           </div>
                         </div>
 
-                        <div className="flex gap-2 mt-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500"
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500"
-                          >
-                            Ver Detalles
-                          </Button>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-400 mb-1">
+                            Cantidad Sugerida
+                          </label>
+                          <input
+                            type="number"
+                            value={selectedProduct.suggestedQuantity ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setSelectedProduct({
+                                ...selectedProduct,
+                                suggestedQuantity: value === '' ? undefined : Math.max(1, parseInt(value) || 1),
+                              });
+                            }}
+                            onBlur={(e) => {
+                              if (e.target.value === '') {
+                                setSelectedProduct({
+                                  ...selectedProduct,
+                                  suggestedQuantity: 1
+                                });
+                              }
+                            }}
+                            min="1"
+                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            placeholder="1"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-400 mb-1">
+                            Cantidad Máxima <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            value={selectedProduct.maxQuantity === undefined ? '' : selectedProduct.maxQuantity}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setSelectedProduct({
+                                ...selectedProduct,
+                                maxQuantity: value === '' ? undefined : Math.max(1, parseInt(value) || 1),
+                              });
+                            }}
+                            onBlur={(e) => {
+                              if (e.target.value === '') {
+                                setSelectedProduct({
+                                  ...selectedProduct,
+                                  maxQuantity: 10
+                                });
+                              }
+                            }}
+                            min="1"
+                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            placeholder="10"
+                            required
+                          />
+                        </div>
+
+                        <div className="flex items-end">
+                          <div className="flex items-center space-x-3 bg-slate-800/50 rounded-lg p-4 w-full h-[60px]">
+                            <input
+                              type="checkbox"
+                              id="isActive"
+                              checked={selectedProduct.isActive !== false}
+                              onChange={(e) =>
+                                setSelectedProduct({
+                                  ...selectedProduct,
+                                  isActive: e.target.checked,
+                                })
+                              }
+                              className="h-5 w-5 rounded border-slate-600 bg-slate-700 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <label htmlFor="isActive" className="block text-sm font-medium text-slate-300">
+                              Producto Activo
+                            </label>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* Sección de medios y descripción */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium text-white border-b border-slate-700 pb-2">Medios y Descripción</h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-400 mb-1">
+                            URL de la Imagen <span className="text-red-500">*</span>
+                            <span className="text-xs text-slate-500 block mt-1">Ingresa una URL de imagen válida</span>
+                          </label>
+                          <input
+                            type="url"
+                            value={selectedProduct.imageUrl}
+                            onChange={(e) =>
+                              setSelectedProduct({
+                                ...selectedProduct,
+                                imageUrl: e.target.value,
+                              })
+                            }
+                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-400 mb-1">
+                            Descripción
+                            <span className="text-xs text-slate-500 block mt-1">Agrega una descripción detallada del producto</span>
+                          </label>
+                          <textarea
+                            value={selectedProduct.description || ''}
+                            onChange={(e) =>
+                              setSelectedProduct({
+                                ...selectedProduct,
+                                description: e.target.value,
+                              })
+                            }
+                            rows={4}
+                            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            placeholder="Describe el producto en detalle..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sección de eventos */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium text-white border-b border-slate-700 pb-2">
+                        Eventos Asociados <span className="text-red-500">*</span>
+                        <span className="text-xs font-normal text-slate-400 block mt-1">
+                          Selecciona los eventos para los que este producto está disponible
+                        </span>
+                      </h3>
+                      
+                      <div className="space-y-2">
+                        <div className="space-y-2 max-h-48 overflow-y-auto p-3 border border-slate-700 rounded-lg bg-slate-800/50">
+                          {events.length === 0 ? (
+                            <p className="text-sm text-slate-400 italic">No hay eventos disponibles</p>
+                          ) : (
+                            events.map((event) => {
+                              const isSelected = Array.isArray(selectedProduct.eventType)
+                                ? selectedProduct.eventType.includes(event.type)
+                                : false;
+
+                              return (
+                                <label key={event.id} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-700/50 cursor-pointer transition-colors">
+                                  <div className={`flex-shrink-0 w-5 h-5 rounded border-2 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-slate-500'} flex items-center justify-center`}>
+                                    {isSelected && (
+                                      <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <span className="text-sm font-medium text-white">{event.title}</span>
+                                    <span className="text-xs text-slate-400 block">{event.type}</span>
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      const currentEventTypes = Array.isArray(selectedProduct.eventType)
+                                        ? [...selectedProduct.eventType]
+                                        : [];
+
+                                      let newEventTypes: EventType[];
+                                      if (e.target.checked) {
+                                        if (!currentEventTypes.includes(event.type)) {
+                                          newEventTypes = [...currentEventTypes, event.type];
+                                        } else {
+                                          newEventTypes = currentEventTypes;
+                                        }
+                                      } else {
+                                        newEventTypes = currentEventTypes.filter(et => et !== event.type);
+                                      }
+
+                                      setSelectedProduct({
+                                        ...selectedProduct,
+                                        eventType: newEventTypes
+                                      });
+                                    }}
+                                    className="sr-only"
+                                  />
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {selectedProduct.eventType && selectedProduct.eventType.length > 0 && (
+                          <div className="mt-3">
+                            <span className="text-xs font-medium text-slate-400 block mb-2">Eventos seleccionados:</span>
+                            <div className="flex flex-wrap gap-2">
+                              {selectedProduct.eventType.map((type, index) => (
+                                <span
+                                  key={index}
+                                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-100"
+                                >
+                                  {type}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newEventTypes = selectedProduct.eventType?.filter((_, i) => i !== index);
+                                      setSelectedProduct({
+                                        ...selectedProduct,
+                                        eventType: newEventTypes
+                                      });
+                                    }}
+                                    className="ml-1.5 text-blue-300 hover:text-white transition-colors"
+                                    aria-label="Quitar evento"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Acciones del formulario */}
+                    <div className="flex justify-end space-x-3 pt-6 border-t border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingProduct(false);
+                          setSelectedProduct(null);
+                        }}
+                        className="px-5 py-2.5 text-sm font-medium text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors duration-200"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-200 flex items-center space-x-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Guardar Cambios</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* View Product Details Modal */}
+          {isViewingProduct && selectedProduct && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+              <div className="bg-slate-800 rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="sticky top-0 z-10 bg-slate-800 pt-6 px-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-white">Detalles del Producto</h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsViewingProduct(false);
+                        setSelectedProduct(null);
+                      }}
+                      className="text-gray-400 hover:text-white"
+                    >
+                      <span className="sr-only">Cerrar</span>
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto flex-1">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="h-64 bg-slate-700 rounded-lg overflow-hidden">
+                      <img
+                        src={selectedProduct.imageUrl}
+                        alt={selectedProduct.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <h4 className="text-2xl font-bold text-white mb-2">{selectedProduct.name}</h4>
+                      <p className="text-blue-400 text-xl font-bold mb-4">${selectedProduct.price.toFixed(2)}</p>
+
+                      <div className="mb-4">
+                        <h5 className="text-sm font-medium text-slate-400 mb-1">Descripción</h5>
+                        <p className="text-slate-300">
+                          {selectedProduct.description || 'No hay descripción disponible'}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <h5 className="text-sm font-medium text-slate-400 mb-1">Categoría</h5>
+                          <p className="text-slate-300">
+                            {categories.find((c: Category) => c.id === selectedProduct.categoryId)?.name || 'No especificada'}
+                          </p>
+                        </div>
+                        <div>
+                          <h5 className="text-sm font-medium text-slate-400 mb-1">Tienda</h5>
+                          <p className="text-slate-300">
+                            {stores.find((s: Store) => s.id === selectedProduct.storeId)?.name || 'No especificada'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <h5 className="text-sm font-medium text-slate-400 mb-2">Disponibilidad</h5>
+                        <div className="w-full bg-slate-700 rounded-full h-2.5">
+                          <div
+                            className="bg-gradient-to-r from-blue-500 to-emerald-500 h-2.5 rounded-full"
+                            style={{ width: `${getProductDetails(selectedProduct).progress}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-sm text-slate-400 mt-1">
+                          <span>{getProductDetails(selectedProduct).totalReserved} reservados</span>
+                          <span>{getProductDetails(selectedProduct).maxQty - getProductDetails(selectedProduct).totalReserved} disponibles</span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                        <Button
+                          variant="outline"
+                          className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:border-slate-500"
+                          onClick={() => {
+                            setIsViewingProduct(false);
+                            setSelectedProduct(selectedProduct);
+                            setIsEditingProduct(true);
+                          }}
+                        >
+                          Editar Producto
+                        </Button>
+                        <Button
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          onClick={() => {
+                            // Aquí podrías agregar la lógica para compartir el producto
+                            navigator.clipboard.writeText(window.location.href);
+                            // Mostrar notificación de copiado al portapapeles
+                          }}
+                        >
+                          Compartir
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -893,8 +1696,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                                 className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
                                 required
                               >
-                                <option value="gender-reveal">Gender Reveal</option>
-                                <option value="baby-shower">Baby Shower</option>
+                                <option value="">Selecciona un tipo de evento</option>
+                                {events.map((event) => (
+                                  <option key={event.id} value={event.type}>
+                                    {event.title} ({event.type})
+                                  </option>
+                                ))}
                               </select>
                             </div>
 
