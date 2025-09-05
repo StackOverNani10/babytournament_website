@@ -120,43 +120,76 @@ export function EventsProvider({ children, initialEvents }: EventsProviderProps)
         // Show loading toast
         const toastId = toast.loading('Actualizando evento...');
         
-        const updatedDbEvent = await dataService.update('events', id, dbUpdates);
-        
-        if (!updatedDbEvent) {
-          throw new Error('No se recibió respuesta del servidor al actualizar el evento');
+        try {
+          // Try to update with returning the updated record
+          const dbEvent = await dataService.update('events', id, dbUpdates) as any;
+          
+          // Map the database event to our Event type
+          const updatedEvent: Event = {
+            id: dbEvent.id,
+            type: dbEvent.type,
+            title: dbEvent.title,
+            subtitle: dbEvent.subtitle || '',
+            date: dbEvent.date,
+            time: dbEvent.time || '',
+            location: dbEvent.location || '',
+            description: dbEvent.description || '',
+            imageUrl: dbEvent.image_url || undefined,
+            isActive: dbEvent.is_active !== undefined ? dbEvent.is_active : true,
+            createdAt: dbEvent.created_at || new Date().toISOString(),
+            sections: dbEvent.sections || {}
+          };
+          
+          // Update local state with the returned event
+          setEvents(prev => 
+            prev.map(event => event.id === id ? updatedEvent : event)
+          );
+          
+          // If there's a current event being edited, update it too
+          if (currentEvent?.id === id) {
+            setCurrentEvent(updatedEvent);
+          }
+          
+          // Show success toast
+          toast.success('Evento actualizado exitosamente', { id: toastId });
+          
+          return updatedEvent;
+        } catch (error) {
+          // If we get here, the update might have succeeded but didn't return the record
+          // So we'll fetch the updated record
+          const dbEvent = await dataService.fetchById('events', id) as any;
+          
+          // Map the database event to our Event type
+          const updatedEvent: Event = {
+            id: dbEvent.id,
+            type: dbEvent.type,
+            title: dbEvent.title,
+            subtitle: dbEvent.subtitle || '',
+            date: dbEvent.date,
+            time: dbEvent.time || '',
+            location: dbEvent.location || '',
+            description: dbEvent.description || '',
+            imageUrl: dbEvent.image_url || undefined,
+            isActive: dbEvent.is_active !== undefined ? dbEvent.is_active : true,
+            createdAt: dbEvent.created_at || new Date().toISOString(),
+            sections: dbEvent.sections || {}
+          };
+          
+          // Update local state with the fetched event
+          setEvents(prev => 
+            prev.map(event => event.id === id ? updatedEvent : event)
+          );
+          
+          // If there's a current event being edited, update it too
+          if (currentEvent?.id === id) {
+            setCurrentEvent(updatedEvent);
+          }
+          
+          // Show success toast
+          toast.success('Evento actualizado exitosamente', { id: toastId });
+          
+          return updatedEvent as Event;
         }
-        
-        // Type assertion to ensure we have the correct type
-        const dbEvent = updatedDbEvent as any;
-        
-        const updatedEvent: Event = {
-          id: dbEvent.id,
-          type: dbEvent.type,
-          title: dbEvent.title,
-          subtitle: dbEvent.subtitle,
-          date: dbEvent.date,
-          time: dbEvent.time,
-          location: dbEvent.location,
-          description: dbEvent.description,
-          imageUrl: dbEvent.image_url || undefined,
-          isActive: dbEvent.is_active ?? true,
-          createdAt: dbEvent.created_at,
-          sections: dbEvent.sections || existingEvent.sections || {}
-        };
-
-        // Update local state
-        setEvents(prev => 
-          prev.map(event => event.id === id ? updatedEvent : event)
-        );
-        
-        if (currentEvent?.id === id) {
-          setCurrentEvent(updatedEvent);
-        }
-        
-        // Show success toast
-        toast.success('Evento actualizado exitosamente', { id: toastId });
-        
-        return updatedEvent;
       } catch (dbError) {
         console.error('Database error updating event:', dbError);
         

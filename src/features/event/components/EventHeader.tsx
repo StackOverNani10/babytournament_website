@@ -47,11 +47,16 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
   // Eliminamos las variables de predicciones ya que se movieron a App.tsx
   
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-ES', {
+    // Add timezone offset to handle dates correctly
+    const date = new Date(dateString);
+    date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
+    
+    return date.toLocaleDateString('es-ES', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'UTC' // Force UTC to match database
     });
   };
 

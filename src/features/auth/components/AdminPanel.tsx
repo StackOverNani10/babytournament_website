@@ -161,6 +161,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
       return 'Fecha inválida';
     }
   };
+
+  // Helper function to format date for input[type="date"]
+  const formatDateForInput = (dateString: string): string => {
+    if (!dateString) return '';
+    try {
+      // If the date is already in YYYY-MM-DD format, return it as is
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        return dateString;
+      }
+      
+      // Create a date object in the local timezone
+      let date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
+      
+      // Adjust for timezone offset to get the correct local date
+      const timezoneOffset = date.getTimezoneOffset() * 60000;
+      const localDate = new Date(date.getTime() + timezoneOffset);
+      
+      const year = localDate.getFullYear();
+      const month = String(localDate.getMonth() + 1).padStart(2, '0');
+      const day = String(localDate.getDate()).padStart(2, '0');
+      
+      return `${year}-${month}-${day}`;
+    } catch (e) {
+      console.error('Error formatting date for input:', e);
+      return '';
+    }
+  };
   type TabType = 'overview' | 'reservations' | 'predictions' | 'products' | 'events';
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [showFilter, setShowFilter] = useState(false);
@@ -1562,7 +1590,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                               const section: Section = {
                                 ...defaultSection,
                                 id: key,
-                                enabled: dbSection?.enabled ?? defaultSection.enabled,
+                                // For 'enabled', only use the default if it's not defined in the database
+                                enabled: dbSection?.enabled !== undefined ? dbSection.enabled : defaultSection.enabled,
+                                // For order, use database value or default
                                 order: dbSection?.order ?? defaultSection.order
                               };
 
@@ -1662,22 +1692,59 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                           if (!editingEvent?.id) return;
 
                           try {
-                            // Crear un nuevo objeto con las propiedades necesarias para la actualización
-                            const updateData = {
-                              ...editingEvent,
-                              // Only include sections if it exists
-                              ...(editingEvent.sections && {
-                                sections: editingEvent.sections // No need to stringify here, the context will handle it
-                              })
+                            // Create a new object with only the fields we want to update
+                            const { id, createdAt, isActive, imageUrl, ...updateData } = editingEvent;
+                            
+                            // Prepare the data for the API call
+                            const formattedData = {
+                              ...updateData,
+                              // Convert field names to match database schema
+                              is_active: isActive,
+                              image_url: imageUrl,
+                              // Format date as YYYY-MM-DD string
+                              date: (() => {
+                                // If the date is already in YYYY-MM-DD format, return it as is
+                                if (/^\d{4}-\d{2}-\d{2}$/.test(editingEvent.date)) {
+                                  return editingEvent.date;
+                                }
+                                
+                                // Otherwise, parse the date and format it as YYYY-MM-DD
+                                const date = new Date(editingEvent.date);
+                                const year = date.getFullYear();
+                                const month = String(date.getMonth() + 1).padStart(2, '0');
+                                const day = String(date.getDate()).padStart(2, '0');
+                                
+                                return `${year}-${month}-${day}`;
+                              })(),
+                              // Only include time if it exists
+                              ...(editingEvent.time && { time: editingEvent.time }),
+                              // Ensure we're not sending any undefined values
+                              ...Object.fromEntries(
+                                Object.entries({
+                                  title: updateData.title,
+                                  subtitle: updateData.subtitle,
+                                  location: updateData.location,
+                                  description: updateData.description,
+                                  type: updateData.type,
+                                  sections: updateData.sections ? 
+                                    Object.entries(updateData.sections).reduce((acc, [key, value]) => {
+                                      // Convert section keys to snake_case for the API
+                                      const snakeKey = key.replace(/-/g, '_');
+                                      return { ...acc, [snakeKey]: value };
+                                    }, {}) : undefined
+                                }).filter(([_, v]) => v !== undefined)
+                              )
                             };
+                            
+                            console.log('Updating event with data:', formattedData);
 
-                            // Actualizar el evento
-                            await updateEvent(editingEvent.id, updateData);
-                            setIsEditing(false);
+                            // Update the event
+                            await updateEvent(editingEvent.id, formattedData);
                             setIsEditing(false);
                           } catch (error) {
                             console.error('Error al actualizar el evento:', error);
-                            // Aquí podrías mostrar un mensaje de error al usuario
+                            // Mostrar mensaje de error al usuario
+                            toast.error('Error al guardar el evento. Por favor, verifica los datos e inténtalo de nuevo.');
                           }
                         }}
                       >
@@ -1743,11 +1810,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                                 </label>
                                 <input
                                   type="date"
-                                  value={editingEvent.date}
-                                  onChange={(e) => setEditingEvent({
-                                    ...editingEvent,
-                                    date: e.target.value
-                                  })}
+                                  value={formatDateForInput(editingEvent.date)}
+                                  onChange={(e) => {
+                                    // Get the date string directly from the input (YYYY-MM-DD format)
+                                    const dateString = e.target.value;
+                                    
+                                    // Update the date in the event
+                                    setEditingEvent({
+                                      ...editingEvent,
+                                      date: dateString
+                                    });
+                                  }}
                                   className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white"
                                   required
                                 />

@@ -5,7 +5,8 @@ export const eventSchema = z.object({
   type: z.enum(['gender-reveal', 'baby-shower', 'birth']) as z.ZodType<EventType>,
   title: z.string().min(1, 'Title is required'),
   subtitle: z.string().optional(),
-  date: z.string().datetime(),
+  date: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
   time: z.string().optional(),
   location: z.string().min(1, 'Location is required'),
   description: z.string().optional(),
