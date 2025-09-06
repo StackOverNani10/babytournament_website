@@ -60,6 +60,24 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
     });
   };
 
+  const formatTimeTo12h = (timeString: string) => {
+    // Extraer horas y minutos del string de tiempo
+    const [hours, minutes] = timeString.split(':').map(Number);
+    
+    // Determinar si es AM o PM
+    const period = hours >= 12 ? 'PM' : 'AM';
+    
+    // Convertir a formato de 12 horas
+    let hours12 = hours % 12;
+    hours12 = hours12 || 12; // Convertir 0 a 12 para medianoche
+    
+    // Formatear con ceros a la izquierda si es necesario
+    const formattedHours = hours12.toString().padStart(2, '0');
+    const formattedMinutes = minutes.toString().padStart(2, '0');
+    
+    return `${formattedHours}:${formattedMinutes} ${period}`;
+  };
+
   const getEventTypeColor = () => {
     switch (theme) {
       case 'boy':
@@ -172,7 +190,7 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Hora</p>
-                    <p className="text-sm font-medium text-gray-800">{event.time}</p>
+                    <p className="text-sm font-medium text-gray-800">{formatTimeTo12h(event.time)}</p>
                   </div>
                 </div>
               )}
