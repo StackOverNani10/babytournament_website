@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode, useEffect, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, ReactNode, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Event, Product, Category, Store, GiftReservation, GenderPrediction } from '../types';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { dataService } from '../lib/data/dataService';
@@ -166,36 +166,8 @@ export function AppProvider({ children }: AppProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Helper to get guest info
-  const getGuestInfo = async (guestId?: string) => {
-    try {
-      if (guestId) {
-        // If we have a guest ID, fetch that specific guest
-        const guest = await dataService.fetchById('guests', guestId);
-        return {
-          id: guest.id,
-          name: guest.name || 'Invitado',
-          email: guest.email || ''
-        };
-      }
-
-      // Otherwise, return a default guest
-      return {
-        name: 'Invitado',
-        email: ''
-      };
-    } catch (error) {
-      console.error('Error fetching guest info:', error);
-      return {
-        name: 'Invitado',
-        email: ''
-      };
-    }
-  };
-
   // Helper to map database prediction to app prediction type
-  const mapDbPredictionToAppPrediction = async (dbPrediction: any): Promise<GenderPrediction> => {
-    const guestInfo = await getGuestInfo(dbPrediction.guest_id);
+  const mapDbPredictionToAppPrediction = (dbPrediction: any): GenderPrediction => {
     return {
       id: dbPrediction.id,
       event_id: dbPrediction.event_id,
@@ -283,6 +255,7 @@ export function AppProvider({ children }: AppProviderProps) {
         setIsLoading(true);
 
         // Fetch all data in parallel
+        console.log('Starting to fetch data...');
         const [
           eventsData, 
           productsData, 
@@ -290,12 +263,35 @@ export function AppProvider({ children }: AppProviderProps) {
           storesData,
           reservationsData
         ] = await Promise.all([
-          dataService.fetchAll('events'),
-          dataService.fetchAll('products'),
-          dataService.fetchAll('categories'),
-          dataService.fetchAll('stores'),
-          fetchReservations()
+          dataService.fetchAll('events').catch(err => {
+            console.error('Error fetching events:', err);
+            return [];
+          }),
+          dataService.fetchAll('products').catch(err => {
+            console.error('Error fetching products:', err);
+            return [];
+          }),
+          dataService.fetchAll('categories').catch(err => {
+            console.error('Error fetching categories:', err);
+            return [];
+          }),
+          dataService.fetchAll('stores').catch(err => {
+            console.error('Error fetching stores:', err);
+            return [];
+          }),
+          fetchReservations().catch(err => {
+            console.error('Error fetching reservations:', err);
+            return [];
+          })
         ]);
+
+        console.log('Raw data from Supabase:', {
+          eventsData,
+          productsData,
+          categoriesData,
+          storesData,
+          reservationsData
+        });
 
         // Map database data to application types
         const mappedEvents = Array.isArray(eventsData)
@@ -338,18 +334,32 @@ export function AppProvider({ children }: AppProviderProps) {
     fetchData();
   }, []);
 
+  // Debug currentEvent changes
+  useEffect(() => {
+    console.log('currentEvent changed:', currentEvent);
+  }, [currentEvent]);
+
   // Set the first event as active by default if none is active
   useEffect(() => {
-    console.log('Events loaded:', events);
-    if (events.length > 0) {
-      console.log('Looking for active event...');
+    // Only run this effect if we have events and no current event is set
+    if (events && events.length > 0 && !currentEvent) {
+      console.log('Initial events load. Total events:', events.length);
+      const activeEvent = events.find(event => event.isActive) || events[0];
+      console.log('Setting initial current event:', activeEvent);
+      setCurrentEvent(activeEvent);
+    } else if (events && events.length === 0) {
+      console.warn('No events available to set as current event');
+      setCurrentEvent(null);
+    }
+  }, [events, currentEvent]);
+
+  // Update currentEvent if the active event changes in the events array
+  useEffect(() => {
+    if (events && events.length > 0 && currentEvent) {
       const activeEvent = events.find(event => event.isActive);
-      console.log('Active event found:', activeEvent);
-      
-      if (!currentEvent) {
-        const eventToSet = activeEvent || events[0];
-        console.log('Setting current event to:', eventToSet);
-        setCurrentEvent(eventToSet);
+      if (activeEvent && activeEvent.id !== currentEvent.id) {
+        console.log('Active event changed, updating current event:', activeEvent);
+        setCurrentEvent(activeEvent);
       }
     }
   }, [events, currentEvent]);
@@ -361,14 +371,25 @@ export function AppProvider({ children }: AppProviderProps) {
     }
   }, [currentEvent, fetchPredictions]);
 
-  const addReservation = useCallback(async (reservation: Omit<GiftReservation, 'id' | 'createdAt' | 'updatedAt' | 'status'>): Promise<GiftReservation | null> => {
+  const addReservation = useCallback(async (reservation: Omit<GiftReservation, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'eventId'> & { eventId?: string }): Promise<GiftReservation | null> => {
+    // Use provided eventId or fall back to currentEvent
+    const targetEventId = reservation.eventId || currentEvent?.id;
+    console.log('Attempting to make reservation. Event ID:', targetEventId, 'Current event:', currentEvent);
+    
+    if (!targetEventId) {
+      const errorMsg = 'No se pudo determinar el evento para la reservación';
+      console.error(errorMsg, { 
+        providedEventId: reservation.eventId, 
+        currentEventId: currentEvent?.id,
+        availableEvents: events
+      });
+      throw new Error(errorMsg);
+    }
+    
+    // Extract guest info and remove eventId from reservation
+    const { eventId: _, ...reservationInfo } = reservation;
+    
     try {
-      console.log('Attempting to make reservation. Current event:', currentEvent);
-      if (!currentEvent) {
-        console.error('No current event when trying to make reservation');
-        console.log('Available events:', events);
-        throw new Error('No hay un evento activo');
-      }
 
       // Validate required fields
       if (!reservation.guestName || reservation.guestName.trim() === '') {
@@ -391,7 +412,7 @@ export function AppProvider({ children }: AppProviderProps) {
         .from('guests')
         .select('*')
         .eq('email', guestEmail)
-        .eq('event_id', currentEvent.id)
+        .eq('event_id', targetEventId)
         .single();
 
       let guestData;
@@ -415,7 +436,7 @@ export function AppProvider({ children }: AppProviderProps) {
         const { data: newGuest, error: createError } = await supabase
           .from('guests')
           .insert({
-            event_id: currentEvent.id,
+            event_id: targetEventId,
             name: reservation.guestName.trim(),
             email: guestEmail,
             phone: '',
@@ -432,11 +453,11 @@ export function AppProvider({ children }: AppProviderProps) {
       if (!guestData) throw new Error('No se pudo crear o actualizar el invitado');
 
       // Prepare reservation data with proper typing
-      const reservationData = {
+      const newReservationData = {
         guest_id: guestData.id,
-        product_id: reservation.productId,
+        product_id: reservationInfo.productId,
         status: 'confirmed',
-        quantity: reservation.quantity,
+        quantity: reservationInfo.quantity,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -444,7 +465,7 @@ export function AppProvider({ children }: AppProviderProps) {
       // Create reservation in database
       const { data: createdReservation, error: reservationError } = await supabase
         .from('reservations')
-        .insert(reservationData)
+        .insert(newReservationData)
         .select()
         .single();
 
@@ -454,11 +475,11 @@ export function AppProvider({ children }: AppProviderProps) {
       // Create the full reservation object
       const newReservation: GiftReservation = {
         id: createdReservation.id,
-        eventId: currentEvent.id,
-        productId: reservation.productId,
-        guestName: reservation.guestName.trim(),
+        eventId: targetEventId,
+        productId: reservationInfo.productId,
+        guestName: reservationInfo.guestName.trim(),
         guestEmail: guestEmail,
-        quantity: reservation.quantity,
+        quantity: reservationInfo.quantity,
         status: 'reserved',
         createdAt: createdReservation.created_at,
         updatedAt: createdReservation.updated_at
@@ -659,34 +680,43 @@ export function AppProvider({ children }: AppProviderProps) {
     );
   };
 
-  const refreshEvents = async () => {
+  const refreshEvents = useCallback(async (): Promise<void> => {
     try {
       const { data, error } = await supabase
         .from('events')
         .select('*')
         .order('date', { ascending: true });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error refreshing events:', error);
+        throw error;
+      }
       
       if (data) {
         const mappedEvents = data.map(mapDbEventToAppEvent);
         setEvents(mappedEvents);
         
         // If there's a current event, update it with the latest data
-        if (currentEvent) {
-          const updatedCurrentEvent = mappedEvents.find((event: Event) => event.id === currentEvent.id);
-          if (updatedCurrentEvent) {
-            setCurrentEvent(updatedCurrentEvent);
+        setCurrentEvent(prevCurrentEvent => {
+          if (!prevCurrentEvent && mappedEvents.length > 0) {
+            // If no current event, set the first one
+            return mappedEvents[0];
+          } else if (prevCurrentEvent) {
+            // Otherwise, find and update the current event
+            const updatedCurrentEvent = mappedEvents.find(event => event.id === prevCurrentEvent.id);
+            return updatedCurrentEvent || prevCurrentEvent;
           }
-        }
+          return prevCurrentEvent;
+        });
       }
     } catch (error) {
-      console.error('Error refreshing events:', error);
+      console.error('Error in refreshEvents:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const value = {
+    // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
     currentEvent,
     events,
     products,
@@ -709,10 +739,27 @@ export function AppProvider({ children }: AppProviderProps) {
     setActiveEvent,
     showConfirmDialog,
     refreshEvents,
-  };
+  }), [
+    currentEvent,
+    events,
+    products,
+    categories,
+    stores,
+    reservations,
+    predictions,
+    selectedTheme,
+    isLoading,
+    error,
+    addReservation,
+    addPrediction,
+    getAvailableQuantity,
+    isProductAvailable,
+    getProductReservations,
+    showConfirmDialog,
+  ]);
 
   return (
-    <AppContext.Provider value={value}>
+    <AppContext.Provider value={contextValue}>
       {children}
       <ConfirmationDialog
         isOpen={showConfirmation}

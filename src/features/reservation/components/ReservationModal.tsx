@@ -104,9 +104,16 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
     e.preventDefault();
     setError(null);
     
+    // Debug current state
+    console.log('Submitting reservation with currentEvent:', currentEvent);
+    console.log('Product:', product);
+    console.log('Form data:', formData);
+    
     // Check if we have a current event
     if (!currentEvent) {
-      setError('No hay un evento activo. Por favor, actualiza la página e intenta de nuevo.');
+      const errorMsg = 'No hay un evento activo. Por favor, actualiza la página e intenta de nuevo.';
+      console.error(errorMsg);
+      setError(errorMsg);
       return;
     }
     
@@ -132,7 +139,9 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
     }
     
     if (formData.quantity > maxQuantity) {
-      setError(`No hay suficiente disponibilidad. Máximo disponible: ${maxQuantity}`);
+      const errorMsg = `No hay suficiente disponibilidad. Máximo disponible: ${maxQuantity}`;
+      console.warn(errorMsg, { requested: formData.quantity, available: maxQuantity });
+      setError(errorMsg);
       return;
     }
 
@@ -149,6 +158,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
         updatedAt: new Date().toISOString()
       };
       
+      console.log('Creating reservation with data:', reservationData);
       await addReservation(reservationData);
       
       setIsSuccess(true);
