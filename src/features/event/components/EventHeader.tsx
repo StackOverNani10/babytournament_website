@@ -189,7 +189,7 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3">
+            {/* <div className="flex flex-col sm:flex-row gap-3">
               <Button 
                 onClick={shareEvent}
                 variant="primary"
@@ -199,7 +199,7 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
               >
                 Compartir Evento
               </Button>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>
