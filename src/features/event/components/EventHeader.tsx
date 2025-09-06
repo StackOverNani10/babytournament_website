@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, MapPin, Clock, Share2, QrCode } from 'lucide-react';
+import { Calendar, MapPin, Clock, Share2 } from 'lucide-react';
 import { Event } from '../../../types';
 import Button from '../../../components/ui/Button';
 
@@ -47,12 +47,35 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
   // Eliminamos las variables de predicciones ya que se movieron a App.tsx
   
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-ES', {
+    // Add timezone offset to handle dates correctly
+    const date = new Date(dateString);
+    date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
+    
+    return date.toLocaleDateString('es-ES', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'UTC' // Force UTC to match database
     });
+  };
+
+  const formatTimeTo12h = (timeString: string) => {
+    // Extraer horas y minutos del string de tiempo
+    const [hours, minutes] = timeString.split(':').map(Number);
+    
+    // Determinar si es AM o PM
+    const period = hours >= 12 ? 'PM' : 'AM';
+    
+    // Convertir a formato de 12 horas
+    let hours12 = hours % 12;
+    hours12 = hours12 || 12; // Convertir 0 a 12 para medianoche
+    
+    // Formatear con ceros a la izquierda si es necesario
+    const formattedHours = hours12.toString().padStart(2, '0');
+    const formattedMinutes = minutes.toString().padStart(2, '0');
+    
+    return `${formattedHours}:${formattedMinutes} ${period}`;
   };
 
   const getEventTypeColor = () => {
@@ -167,7 +190,7 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
                   </div>
                   <div>
                     <p className="text-xs text-gray-500">Hora</p>
-                    <p className="text-sm font-medium text-gray-800">{event.time}</p>
+                    <p className="text-sm font-medium text-gray-800">{formatTimeTo12h(event.time)}</p>
                   </div>
                 </div>
               )}
@@ -184,7 +207,7 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3">
+            {/* <div className="flex flex-col sm:flex-row gap-3">
               <Button 
                 onClick={shareEvent}
                 variant="primary"
@@ -194,16 +217,7 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
               >
                 Compartir Evento
               </Button>
-              
-              <Button 
-                variant="outline"
-                size="md"
-                icon={QrCode}
-                className={`flex-1 sm:flex-none justify-center ${buttonColors.outline} transition-colors ${buttonColors.focus}`}
-              >
-                Código QR
-              </Button>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>

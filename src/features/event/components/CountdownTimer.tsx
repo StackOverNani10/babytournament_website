@@ -17,7 +17,12 @@ const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate, theme }) =>
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
-      const difference = targetDate.getTime() - now.getTime();
+      // Adjust target date for timezone to match the date in the database
+      const adjustedTargetDate = new Date(targetDate);
+      const timezoneOffset = now.getTimezoneOffset() * 60000; // in milliseconds
+      const localTargetDate = new Date(adjustedTargetDate.getTime() + timezoneOffset);
+      
+      const difference = localTargetDate.getTime() - now.getTime();
       
       if (difference <= 0) {
         setHasStarted(true);
