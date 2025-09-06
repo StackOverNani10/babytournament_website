@@ -26,6 +26,17 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
     );
   }, [products, currentEvent]);
 
+  // Set default category based on theme when component mounts or theme changes
+  useEffect(() => {
+    if (theme === 'boy') {
+      setSelectedCategory('1'); // Pañales
+    } else if (theme === 'girl') {
+      setSelectedCategory('6'); // Toallitas Húmedas
+    } else {
+      setSelectedCategory('all');
+    }
+  }, [theme]);
+
   // Calculate max price
   const maxPrice = useMemo(() =>
     eventProducts.length > 0 ? Math.max(...eventProducts.map(p => p.price)) : 0,
