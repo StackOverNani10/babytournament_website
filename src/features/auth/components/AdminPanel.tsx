@@ -93,6 +93,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
 
   const {
     reservations,
+    cancelReservation,
+    confirmReservation,
+    refreshReservations,
     getProductReservations
   } = useReservations();
 
@@ -607,12 +610,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                             </div>
                           </div>
                         </div>
-                        <Badge
-                          variant={reservation.status === 'confirmed' ? 'success' : 'default'}
-                          className="text-xs px-2 py-1"
-                        >
-                          {reservation.status === 'confirmed' ? 'Confirmado' : 'Pendiente'}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={reservation.status === 'confirmed' ? 'success' : 'default'}
+                            className="text-xs px-2 py-1"
+                          >
+                            {reservation.status === 'confirmed' ? 'Confirmado' : 'Pendiente'}
+                          </Badge>
+                          {reservation.status === 'pending' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                confirmReservation(reservation.id);
+                              }}
+                              className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                              title="Confirmar reserva"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                              Confirmar
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
