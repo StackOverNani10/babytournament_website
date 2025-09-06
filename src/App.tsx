@@ -1,8 +1,7 @@
 import { Toaster, toast } from 'sonner';
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
-import { useDataService } from './hooks/useDataService';
 import { EventsProvider } from './context/events/EventsContext';
 import { ReservationsProvider } from './context/reservations/ReservationsContext';
 import { PredictionsProvider } from './context/predictions/PredictionsContext';
@@ -236,9 +235,10 @@ function App() {
     // This will redirect to the login page
     navigate('/login');
   };
+
   return (
-    <AuthProvider>
-      <AppProvider>
+    <AppProvider>
+      <AuthProvider>
         <Toaster position="top-center" richColors closeButton />
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -259,8 +259,8 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </AppProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </AppProvider>
   );
 }
 
