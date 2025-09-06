@@ -25,5 +25,17 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       open: true
     },
+    build: {
+      outDir: 'dist',
+      rollupOptions: {
+        output: {
+          manualChunks: undefined,
+        },
+      },
+      // Asegurarse de copiar el archivo _redirects
+      assetsInlineLimit: 0,
+      // Copiar el archivo _redirects al directorio de salida
+      copyPublicDir: true,
+    },
   };
 });

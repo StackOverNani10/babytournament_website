@@ -17,11 +17,12 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
   const [selectedStore, setSelectedStore] = useState<string>('all');
   const [isMounted, setIsMounted] = useState(false);
 
-  // Filter products based on event type
+  // Filter products based on event type and active status
   const eventProducts = useMemo(() => {
     if (!currentEvent) return []; // Return empty array if no current event
-    return products.filter(product =>
-      !product.eventType || product.eventType.includes(currentEvent.type)
+    return products.filter(product => 
+      product.isActive && // Only include active products
+      (!product.eventType || product.eventType.includes(currentEvent.type))
     );
   }, [products, currentEvent]);
 
