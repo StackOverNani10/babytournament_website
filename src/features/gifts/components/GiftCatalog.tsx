@@ -11,7 +11,7 @@ interface GiftCatalogProps {
 }
 
 const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
-  const { products, categories, stores, currentEvent } = useApp();
+  const { products, categories, stores, currentEvent, getProductReservations } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedStore, setSelectedStore] = useState<string>('all');
@@ -20,7 +20,7 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
   // Filter products based on event type and active status
   const eventProducts = useMemo(() => {
     if (!currentEvent) return []; // Return empty array if no current event
-    return products.filter(product => 
+    return products.filter(product =>
       product.isActive && // Only include active products
       (!product.eventType || product.eventType.includes(currentEvent.type))
     );
@@ -84,13 +84,15 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
         case 'price':
           return a.price - b.price;
         case 'popularity':
-          // This would be based on actual reservation data
-          return b.suggestedQuantity - a.suggestedQuantity;
+          // Sort by actual reservation count (descending)
+          const aReservations = getProductReservations(a.id).reduce((sum, r) => sum + r.quantity, 0);
+          const bReservations = getProductReservations(b.id).reduce((sum, r) => sum + r.quantity, 0);
+          return bReservations - aReservations;
         default:
           return a.name.localeCompare(b.name);
       }
     });
-  }, [eventProducts, searchTerm, selectedCategory, selectedStore, priceRange, sortBy]);
+  }, [eventProducts, searchTerm, selectedCategory, selectedStore, priceRange, sortBy, getProductReservations]);
 
   const getThemeColors = () => {
     switch (theme) {
