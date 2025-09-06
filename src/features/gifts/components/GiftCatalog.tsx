@@ -26,6 +26,17 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
     );
   }, [products, currentEvent]);
 
+  // Set default category based on theme when component mounts or theme changes
+  useEffect(() => {
+    if (theme === 'boy') {
+      setSelectedCategory('1'); // Pañales
+    } else if (theme === 'girl') {
+      setSelectedCategory('6'); // Toallitas Húmedas
+    } else {
+      setSelectedCategory('all');
+    }
+  }, [theme]);
+
   // Calculate max price
   const maxPrice = useMemo(() =>
     eventProducts.length > 0 ? Math.max(...eventProducts.map(p => p.price)) : 0,
@@ -71,9 +82,18 @@ const GiftCatalog: React.FC<GiftCatalogProps> = ({ theme = 'neutral' }) => {
   const filteredProducts = useMemo(() => {
     let filtered = eventProducts.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory;
       const matchesStore = selectedStore === 'all' || product.storeId === selectedStore;
       const matchesPrice = product.price >= priceRange[0] && product.price <= priceRange[1];
+      
+      // Apply gender-based category filtering
+      let matchesCategory = true;
+      if (theme === 'boy') {
+        matchesCategory = product.categoryId === '1'; // Only show 'Pañales' for boys
+      } else if (theme === 'girl') {
+        matchesCategory = product.categoryId === '6'; // Only show 'Toallitas Húmedas' for girls
+      } else if (selectedCategory !== 'all') {
+        matchesCategory = product.categoryId === selectedCategory; // Respect manual category selection for neutral theme
+      }
 
       return matchesSearch && matchesCategory && matchesStore && matchesPrice;
     });
