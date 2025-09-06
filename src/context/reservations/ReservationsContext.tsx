@@ -2,7 +2,7 @@ import { createContext, useContext, ReactNode, useState, useEffect, useCallback 
 import { dataService } from '@/lib/data/dataService';
 import { GiftReservation, ReservationStatus } from '../../features/reservation/types/reservations';
 import { Product } from '../../features/gifts/types/products';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/client';
 
 interface ReservationsContextType {
   reservations: GiftReservation[];
@@ -10,6 +10,7 @@ interface ReservationsContextType {
   error: string | null;
   addReservation: (reservation: Omit<GiftReservation, 'id' | 'createdAt' | 'status'>) => Promise<GiftReservation>;
   cancelReservation: (id: string) => Promise<void>;
+  confirmReservation: (id: string) => Promise<void>;
   getAvailableQuantity: (product: Product) => number;
   isProductAvailable: (product: Product) => boolean;
   getProductReservations: (productId: string) => GiftReservation[];
@@ -175,17 +176,111 @@ export function ReservationsProvider({
   const cancelReservation = useCallback(async (id: string) => {
     try {
       setLoading(true);
-      await dataService.update('reservations', id, { status: 'cancelled' });
+      // Update status to cancelled in the database
+      const { error } = await supabase
+        .from('reservations')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Update local state
       setReservations(prev => 
-        prev.map(r => r.id === id ? { ...r, status: 'cancelled' } : r)
+        prev.map(res => 
+          res.id === id 
+            ? { ...res, status: 'cancelled', updatedAt: new Date().toISOString() } 
+            : res
+        )
       );
     } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel reservation');
       console.error('Error cancelling reservation:', err);
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [setReservations]);
+  }, []);
+
+  const confirmReservation = useCallback(async (id: string) => {
+    try {
+      console.log('Starting to confirm reservation with ID:', id);
+      setLoading(true);
+      
+      // First, get the current reservation to ensure it exists
+      console.log('Fetching current reservation data...');
+      const { data: existingReservation, error: fetchError } = await supabase
+        .from('reservations')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching reservation:', fetchError);
+        throw new Error('No se pudo encontrar la reserva');
+      }
+
+      console.log('Current reservation data:', existingReservation);
+      console.log('Updating database for reservation:', id);
+      
+      // Update status to confirmed in the database
+      const { data: updatedData, error } = await supabase
+        .from('reservations')
+        .update({ 
+          status: 'confirmed',
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', id)
+        .select();
+
+      console.log('Update response:', { data: updatedData, error });
+
+      if (error) {
+        console.error('Database update error:', error);
+        throw error;
+      }
+      
+      if (!updatedData || updatedData.length === 0) {
+        console.error('No data returned from update operation');
+        // Try to fetch the reservation again to verify its current state
+        const { data: currentData } = await supabase
+          .from('reservations')
+          .select('*')
+          .eq('id', id)
+          .single();
+          
+        console.log('Current state after update attempt:', currentData);
+        
+        if (currentData?.status !== 'confirmed') {
+          throw new Error('La actualización no se aplicó correctamente en la base de datos');
+        }
+      }
+
+      console.log('Updating local state for reservation:', id);
+      // Update local state with proper typing
+      setReservations(prev => {
+        const updated = prev.map(res => 
+          res.id === id 
+            ? { 
+                ...res, 
+                status: 'confirmed' as const, 
+                updatedAt: new Date().toISOString() 
+              } 
+            : res
+        );
+        console.log('Local state updated:', updated.find(r => r.id === id));
+        return updated;
+      });
+      
+      console.log('Reservation confirmed successfully:', id);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to confirm reservation';
+      console.error('Error in confirmReservation:', { id, error: err });
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const getAvailableQuantity = useCallback((product: Product) => {
     const reserved = reservations
@@ -214,6 +309,7 @@ export function ReservationsProvider({
     error,
     addReservation,
     cancelReservation,
+    confirmReservation,
     getAvailableQuantity,
     isProductAvailable,
     getProductReservations,
