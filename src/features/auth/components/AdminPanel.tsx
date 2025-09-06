@@ -170,19 +170,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
         return dateString;
       }
-      
+
       // Create a date object in the local timezone
       let date = new Date(dateString);
       if (isNaN(date.getTime())) return '';
-      
+
       // Adjust for timezone offset to get the correct local date
       const timezoneOffset = date.getTimezoneOffset() * 60000;
       const localDate = new Date(date.getTime() + timezoneOffset);
-      
+
       const year = localDate.getFullYear();
       const month = String(localDate.getMonth() + 1).padStart(2, '0');
       const day = String(localDate.getDate()).padStart(2, '0');
-      
+
       return `${year}-${month}-${day}`;
     } catch (e) {
       console.error('Error formatting date for input:', e);
@@ -194,6 +194,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   const [showFilter, setShowFilter] = useState(false);
   const [filters, setFilters] = useState({
     eventType: '' as EventType | '',
+    storeId: '',
     minPrice: '',
     maxPrice: '',
     inStock: false,
@@ -221,7 +222,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
       isActive: true,
       productUrl: ''
     };
-    
+
     setSelectedProduct(defaultProduct);
     setIsEditingProduct(true);
     setIsViewingProduct(false);
@@ -351,27 +352,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
       const productData: any = {
         // Only include the ID if it exists (for updates)
         ...(selectedProduct.id && { id: selectedProduct.id }),
-        
+
         // Required fields
         name: selectedProduct.name.trim(),
         price: Number(selectedProduct.price) || 0,
-        
+
         // Optional fields with proper snake_case names
         ...(selectedProduct.categoryId && { category_id: selectedProduct.categoryId }),
         ...(selectedProduct.storeId && { store_id: selectedProduct.storeId }),
         image_url: selectedProduct.imageUrl, // Hacer obligatorio
         ...(selectedProduct.description && { description: selectedProduct.description }),
-        suggested_quantity: selectedProduct.suggestedQuantity !== undefined 
-          ? Number(selectedProduct.suggestedQuantity) 
+        suggested_quantity: selectedProduct.suggestedQuantity !== undefined
+          ? Number(selectedProduct.suggestedQuantity)
           : 1,
-        max_quantity: selectedProduct.maxQuantity !== undefined 
-          ? Number(selectedProduct.maxQuantity) 
+        max_quantity: selectedProduct.maxQuantity !== undefined
+          ? Number(selectedProduct.maxQuantity)
           : 10,
-        event_type: Array.isArray(selectedProduct.eventType) 
-          ? selectedProduct.eventType.filter(Boolean) 
+        event_type: Array.isArray(selectedProduct.eventType)
+          ? selectedProduct.eventType.filter(Boolean)
           : [],
         is_active: selectedProduct.isActive !== false,
-        
+
         // Include product_url if it exists
         ...(selectedProduct.productUrl && { product_url: selectedProduct.productUrl })
       };
@@ -386,7 +387,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
           .update(productData)
           .eq('id', selectedProduct.id)
           .select();
-        
+
         if (error) throw error;
         result = data?.[0];
       } else {
@@ -395,7 +396,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
           .from('products')
           .insert([productData])
           .select();
-        
+
         if (error) throw error;
         result = data?.[0];
       }
@@ -405,14 +406,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
       }
 
       // Mostrar mensaje de éxito
-      toast.success(selectedProduct.id 
-        ? '¡Producto actualizado exitosamente!' 
+      toast.success(selectedProduct.id
+        ? '¡Producto actualizado exitosamente!'
         : '¡Producto creado exitosamente!');
-      
+
       // Cerrar el formulario y actualizar la lista de productos
       setIsEditingProduct(false);
       setSelectedProduct(null);
-      
+
       // Recargar los productos para reflejar los cambios
       // Esto asume que tienes una función para cargar los productos
       // Si no la tienes, puedes recargar la página o implementar otra lógica de actualización
@@ -420,7 +421,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
     } catch (error) {
       console.error('Error saving product:', error);
       toast.error(`Error al guardar el producto: ${error instanceof Error ? error.message : 'Error desconocido'}`);
-      
+
       // Mantener el formulario abierto para que el usuario pueda corregir los errores
       return;
     }
@@ -753,8 +754,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                 <div className="bg-slate-800/50 p-4 rounded-lg mb-6 border border-slate-700">
                   <h5 className="text-sm font-medium text-slate-300 mb-3">Filtros de Productos</h5>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-400 mb-1">Evento</label>
+                    <div className="w-full md:w-auto">
+                      <label className="block text-sm font-medium text-slate-400 mb-1">Tipo de Evento</label>
                       <select
                         value={filters.eventType}
                         onChange={(e) => setFilters({ ...filters, eventType: e.target.value as EventType })}
@@ -764,6 +765,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                         {events.map((event) => (
                           <option key={event.id} value={event.type}>
                             {event.title} ({event.type})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-full md:w-auto">
+                      <label className="block text-sm font-medium text-slate-400 mb-1">Tienda</label>
+                      <select
+                        value={filters.storeId}
+                        onChange={(e) => setFilters({ ...filters, storeId: e.target.value })}
+                        className="w-full bg-slate-700 border border-slate-600 rounded-md py-2 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Todas las tiendas</option>
+                        {stores.map((store) => (
+                          <option key={store.id} value={store.id}>
+                            {store.name}
                           </option>
                         ))}
                       </select>
@@ -815,13 +831,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {products
                   .filter(product => {
-                    const filteredEvents = events
-                      .filter((event) => {
-                        if (filters.eventType && event.type !== filters.eventType) return false;
-                        return true;
-                      });
-                    // Filtrar por tipo de evento
-                    if (filters.eventType && !filteredEvents.some(event => event.type === filters.eventType)) return false;
+                    // Si hay un filtro de tipo de evento aplicado
+                    if (filters.eventType) {
+                      // Verificar si el producto tiene el tipo de evento seleccionado
+                      const hasMatchingEventType = product.eventType &&
+                        (Array.isArray(product.eventType)
+                          ? product.eventType.includes(filters.eventType)
+                          : product.eventType === filters.eventType);
+
+                      if (!hasMatchingEventType) return false;
+                    }
+
+                    // Filtrar por tienda
+                    if (filters.storeId && product.storeId !== filters.storeId) return false;
 
                     // Filtrar por rango de precios
                     if (filters.minPrice && product.price < Number(filters.minPrice)) return false;
@@ -1204,7 +1226,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                           Selecciona los eventos para los que este producto está disponible
                         </span>
                       </h3>
-                      
+
                       <div className="space-y-2">
                         <div className="space-y-2 max-h-48 overflow-y-auto p-3 border border-slate-700 rounded-lg bg-slate-800/50">
                           {events.length === 0 ? (
@@ -1381,6 +1403,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                       </div>
 
                       <div className="mb-4">
+                        <h5 className="text-sm font-medium text-slate-400 mb-1">Status</h5>
+                        <p className="text-slate-300">
+                          {selectedProduct.isActive ? 'Activo ✅' : 'Inactivo ❌'}
+                        </p>
+                      </div>
+
+                      <div className="mb-4">
                         <h5 className="text-sm font-medium text-slate-400 mb-2">Disponibilidad</h5>
                         <div className="w-full bg-slate-700 rounded-full h-2.5">
                           <div
@@ -1405,16 +1434,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                           }}
                         >
                           Editar Producto
-                        </Button>
-                        <Button
-                          className="flex-1 bg-blue-600 hover:bg-blue-700"
-                          onClick={() => {
-                            // Aquí podrías agregar la lógica para compartir el producto
-                            navigator.clipboard.writeText(window.location.href);
-                            // Mostrar notificación de copiado al portapapeles
-                          }}
-                        >
-                          Compartir
                         </Button>
                       </div>
                     </div>
@@ -1694,7 +1713,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                           try {
                             // Create a new object with only the fields we want to update
                             const { id, createdAt, isActive, imageUrl, ...updateData } = editingEvent;
-                            
+
                             // Prepare the data for the API call
                             const formattedData = {
                               ...updateData,
@@ -1707,13 +1726,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                                 if (/^\d{4}-\d{2}-\d{2}$/.test(editingEvent.date)) {
                                   return editingEvent.date;
                                 }
-                                
+
                                 // Otherwise, parse the date and format it as YYYY-MM-DD
                                 const date = new Date(editingEvent.date);
                                 const year = date.getFullYear();
                                 const month = String(date.getMonth() + 1).padStart(2, '0');
                                 const day = String(date.getDate()).padStart(2, '0');
-                                
+
                                 return `${year}-${month}-${day}`;
                               })(),
                               // Only include time if it exists
@@ -1726,7 +1745,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                                   location: updateData.location,
                                   description: updateData.description,
                                   type: updateData.type,
-                                  sections: updateData.sections ? 
+                                  sections: updateData.sections ?
                                     Object.entries(updateData.sections).reduce((acc, [key, value]) => {
                                       // Convert section keys to snake_case for the API
                                       const snakeKey = key.replace(/-/g, '_');
@@ -1735,7 +1754,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                                 }).filter(([_, v]) => v !== undefined)
                               )
                             };
-                            
+
                             console.log('Updating event with data:', formattedData);
 
                             // Update the event
@@ -1814,7 +1833,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                                   onChange={(e) => {
                                     // Get the date string directly from the input (YYYY-MM-DD format)
                                     const dateString = e.target.value;
-                                    
+
                                     // Update the date in the event
                                     setEditingEvent({
                                       ...editingEvent,
