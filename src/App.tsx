@@ -1,10 +1,11 @@
 import { Toaster, toast } from 'sonner';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import { EventsProvider } from './context/events/EventsContext';
 import { ReservationsProvider } from './context/reservations/ReservationsContext';
 import { PredictionsProvider } from './context/predictions/PredictionsContext';
+import { GuestsProvider } from './context/guests/GuestsContext';
 import { AuthProvider } from './context/auth/AuthContext';
 import Layout from './components/layout/Layout';
 import Footer from './components/layout/Footer';
@@ -30,11 +31,45 @@ import Button from './components/ui/Button';
 
 // Icons
 import { Sparkles, Users } from 'lucide-react';
+import Alert from './components/ui/Alert';
 
 // Mover HomePage fuera del componente App para evitar re-renderizados innecesarios
 const HomePageContent: React.FC = () => {
-  const { currentEvent, selectedTheme, setSelectedTheme, predictions } = useApp();
+  const { currentEvent, selectedTheme, setSelectedTheme: originalSetSelectedTheme, predictions } = useApp();
   const [showPredictionModal, setShowPredictionModal] = useState(false);
+  const predictionsRef = useRef<HTMLDivElement>(null);
+  const [showAlert, setShowAlert] = useState(!localStorage.getItem('predictionAlertDismissed'));
+  
+  // Set up scroll listener for predictions section
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!predictionsRef.current) return;
+      
+      const predictionsSection = predictionsRef.current;
+      const rect = predictionsSection.getBoundingClientRect();
+      const isInView = rect.top <= window.innerHeight * 0.8 && rect.bottom >= 0;
+      
+      if (isInView && !localStorage.getItem('predictionAlertDismissed')) {
+        setShowAlert(true);
+      } else {
+        setShowAlert(false);
+      }
+    };
+
+    // Initial check
+    handleScroll();
+    
+    // Add scroll listener
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    
+    // Clean up
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const setSelectedTheme = (theme: 'boy' | 'girl' | 'neutral') => {
+    originalSetSelectedTheme(theme);
+  };
+
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   const handlePredictionClick = () => {
@@ -111,10 +146,22 @@ const HomePageContent: React.FC = () => {
             switch(section.id) {
               case 'predictions':
                 return (
-                  <div key="predicciones" id="predicciones" className="flex flex-col items-center gap-4 mb-16">
+                  <div key="predicciones" id="predicciones" ref={predictionsRef} className="flex flex-col items-center gap-4 mb-16">
+                    <Alert
+                      isOpen={showAlert}
+                      onClose={() => {
+                        setShowAlert(false);
+                        localStorage.setItem('predictionAlertDismissed', 'true');
+                      }}
+                      message="¿Cambiaste de opinión? ¡No te preocupes! Puedes actualizar tu predicción en cualquier momento."
+                      theme={selectedTheme}
+                    />
                     <GenderSwitcher 
                       selectedGender={selectedTheme} 
-                      onGenderChange={setSelectedTheme} 
+                      onGenderChange={(theme) => {
+                        setSelectedTheme(theme);
+                        // No mostrar toast ya que tenemos el alert
+                      }}
                     />
                     
                     {selectedTheme !== 'neutral' && (
@@ -239,26 +286,28 @@ function App() {
   return (
     <AppProvider>
       <AuthProvider>
-        <Toaster position="top-center" richColors closeButton />
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route 
-            path="/admin/*" 
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <EventsProvider>
-                  <ReservationsProvider>
-                    <PredictionsProvider>
-                      <AdminPanel onLogout={handleLogout} />
-                    </PredictionsProvider>
-                  </ReservationsProvider>
-                </EventsProvider>
-              </ProtectedRoute>
-            } 
-          />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <EventsProvider>
+          <ReservationsProvider>
+            <PredictionsProvider>
+              <GuestsProvider>
+                <Toaster position="top-center" richColors closeButton />
+                <Routes>
+                  <Route path="/" element={<HomePage />} />
+                  <Route 
+                    path="/admin/*" 
+                    element={
+                      <ProtectedRoute requiredRole="admin">
+                        <AdminPanel onLogout={handleLogout} />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </GuestsProvider>
+            </PredictionsProvider>
+          </ReservationsProvider>
+        </EventsProvider>
       </AuthProvider>
     </AppProvider>
   );
@@ -284,70 +333,5 @@ function LoginPage() {
 }
 
 // Unauthorized access page
-function UnauthorizedPage() {
-  const navigate = useNavigate();
-  
-  const handleGoBack = () => {
-    navigate(-1); // Go back to previous page
-  };
-  
-  const handleGoHome = () => {
-    navigate('/');
-  };
-  
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 px-4">
-      <div className="max-w-md w-full space-y-6 text-center p-8 bg-white rounded-xl shadow-lg">
-        <div className="mx-auto w-24 h-24 bg-red-50 rounded-full flex items-center justify-center">
-          <svg 
-            className="w-12 h-12 text-red-500" 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" 
-            />
-          </svg>
-        </div>
-        
-        <h1 className="text-3xl font-bold text-gray-900">Acceso no autorizado</h1>
-        <p className="text-gray-600">
-          No tienes permiso para acceder a esta página. Por favor, inicia sesión con una cuenta que tenga los permisos necesarios.
-        </p>
-        
-        <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-          <button
-            onClick={handleGoBack}
-            className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Volver atrás
-          </button>
-          <button
-            onClick={handleGoHome}
-            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Ir al inicio
-          </button>
-        </div>
-        
-        <div className="pt-6 border-t border-gray-100 mt-6">
-          <p className="text-sm text-gray-500">
-            ¿Necesitas ayuda?{' '}
-            <a 
-              href="mailto:soporte@detallazo.com" 
-              className="text-blue-600 hover:underline"
-            >
-              Contáctanos
-            </a>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default App;

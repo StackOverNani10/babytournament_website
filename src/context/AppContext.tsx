@@ -4,6 +4,10 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import { dataService } from '../lib/data/dataService';
 import { supabase } from '@/lib/supabase/client';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { EventsProvider } from './events/EventsContext';
+import { ReservationsProvider } from './reservations/ReservationsContext';
+import { PredictionsProvider } from './predictions/PredictionsContext';
+import { GuestsProvider } from './guests/GuestsContext';
 
 // Helper function to map database event to app event type
 const mapDbEventToAppEvent = (dbEvent: any): Event => {
