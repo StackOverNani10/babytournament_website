@@ -12,29 +12,35 @@ const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate, theme }) =>
     minutes: 0,
     seconds: 0
   });
-  const [hasStarted, setHasStarted] = useState(false);
+  const [hasStarted, setHasStarted] = useState(() => {
+    // Verificar inicialmente si el evento ya pasó
+    const now = new Date();
+    const target = new Date(targetDate);
+    return target <= now;
+  });
 
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
-      // Adjust target date for timezone to match the date in the database
-      const adjustedTargetDate = new Date(targetDate);
-      const timezoneOffset = now.getTimezoneOffset() * 60000; // in milliseconds
-      const localTargetDate = new Date(adjustedTargetDate.getTime() + timezoneOffset);
+      // Usar la fecha objetivo proporcionada
+      const target = new Date(targetDate);
       
-      const difference = localTargetDate.getTime() - now.getTime();
+      // Get the time difference in milliseconds
+      const difference = target.getTime() - now.getTime();
       
-      if (difference <= 0) {
+      if (difference < 0) {
         setHasStarted(true);
         return { days: 0, hours: 0, minutes: 0, seconds: 0 };
       }
 
-      return {
-        days: Math.floor(difference / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
-        minutes: Math.floor((difference / 1000 / 60) % 60),
-        seconds: Math.floor((difference / 1000) % 60)
-      };
+      // Calculate time units with better precision
+      const totalSeconds = Math.floor(difference / 1000);
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      return { days, hours, minutes, seconds };
     };
 
     const timer = setInterval(() => {
@@ -61,12 +67,44 @@ const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate, theme }) =>
 
   if (hasStarted) {
     return (
-      <div className="text-center py-6 px-4">
-        <h3 className={`text-xl font-bold ${getTextColor()} mb-2`}>¡El evento ha comenzado!</h3>
-        <p className="text-gray-600">¡Gracias por acompañarnos en este momento especial!</p>
+      <div className="py-6 px-4">
+        <div className="flex justify-center gap-3 sm:gap-4 md:gap-6 mb-6">
+          <TimeBox value={0} label="Días" gradient={getGradient()} />
+          <TimeBox value={0} label="Horas" gradient={getGradient()} />
+          <TimeBox value={0} label="Minutos" gradient={getGradient()} />
+          <TimeBox value={0} label="Segundos" gradient={getGradient()} />
+        </div>
+        <div className="text-center mt-6">
+          <h3 className={`text-xl font-bold ${getTextColor()} mb-2`}>¡El evento ha comenzado!</h3>
+          <p className="text-gray-600">¡Gracias por acompañarnos en este momento especial!</p>
+        </div>
       </div>
     );
   }
+
+  // Asegurar que no mostremos valores negativos
+  const displayTime = {
+    days: timeLeft.days >= 0 ? timeLeft.days : 0,
+    hours: timeLeft.hours >= 0 ? timeLeft.hours : 0,
+    minutes: timeLeft.minutes >= 0 ? timeLeft.minutes : 0,
+    seconds: timeLeft.seconds >= 0 ? timeLeft.seconds : 0
+  };
+  
+
+  // Verificar si el evento ya pasó basado en la fecha objetivo
+  useEffect(() => {
+    const checkIfEventStarted = () => {
+      const now = new Date();
+      const target = new Date(targetDate);
+      if (now >= target) {
+        setHasStarted(true);
+      }
+    };
+    
+    checkIfEventStarted();
+    const interval = setInterval(checkIfEventStarted, 1000);
+    return () => clearInterval(interval);
+  }, [targetDate]);
 
   return (
     <div className="py-6 px-4">
@@ -74,10 +112,10 @@ const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate, theme }) =>
         ¡La cuenta regresiva ha comenzado!
       </h3>
       <div className="flex justify-center gap-3 sm:gap-4 md:gap-6">
-        <TimeBox value={timeLeft.days} label="Días" gradient={getGradient()} />
-        <TimeBox value={timeLeft.hours} label="Horas" gradient={getGradient()} />
-        <TimeBox value={timeLeft.minutes} label="Minutos" gradient={getGradient()} />
-        <TimeBox value={timeLeft.seconds} label="Segundos" gradient={getGradient()} />
+        <TimeBox value={displayTime.days} label="Días" gradient={getGradient()} />
+        <TimeBox value={displayTime.hours} label="Horas" gradient={getGradient()} />
+        <TimeBox value={displayTime.minutes} label="Minutos" gradient={getGradient()} />
+        <TimeBox value={displayTime.seconds} label="Segundos" gradient={getGradient()} />
       </div>
     </div>
   );
