@@ -195,6 +195,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   type TabType = 'overview' | 'reservations' | 'predictions' | 'products' | 'events';
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [showFilter, setShowFilter] = useState(false);
+  const [visiblePredictions, setVisiblePredictions] = useState(10);
   const [filters, setFilters] = useState({
     eventType: '' as EventType | '',
     storeId: '',
@@ -660,7 +661,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
               ) : (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {predictions.slice(0, 10).map((prediction: any) => {
+                    {predictions.slice(0, visiblePredictions).map((prediction: any) => {
                       const guestName = prediction.guest_name || prediction.guest?.name || 'Invitado';
                       const isBoy = prediction.prediction === 'boy';
 
@@ -720,13 +721,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                     })}
                   </div>
 
-                  {predictions.length > 10 && (
+                  {predictions.length > visiblePredictions && (
                     <div className="mt-4 text-center">
                       <button
-                        onClick={() => {/* Handle show more */ }}
-                        className="text-blue-400 hover:text-blue-300 text-sm hover:underline"
+                        onClick={() => setVisiblePredictions(prev => prev + 10)}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
                       >
                         Mostrar más predicciones
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                  {visiblePredictions > 10 && (
+                    <div className="mt-2 text-center">
+                      <button
+                        onClick={() => setVisiblePredictions(10)}
+                        className="text-sm text-slate-400 hover:text-slate-300 transition-colors"
+                      >
+                        Mostrar menos
                       </button>
                     </div>
                   )}
