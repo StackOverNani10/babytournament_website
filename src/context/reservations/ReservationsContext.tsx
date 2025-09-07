@@ -1,5 +1,4 @@
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from 'react';
-import { dataService } from '@/lib/data/dataService';
 import { GiftReservation, ReservationStatus } from '../../features/reservation/types/reservations';
 import { Product } from '../../features/gifts/types/products';
 import { supabase } from '@/lib/supabase/client';
@@ -203,78 +202,63 @@ export function ReservationsProvider({
 
   const confirmReservation = useCallback(async (id: string) => {
     try {
-      console.log('Starting to confirm reservation with ID:', id);
       setLoading(true);
       
       // First, get the current reservation to ensure it exists
-      console.log('Fetching current reservation data...');
       const { data: existingReservation, error: fetchError } = await supabase
         .from('reservations')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (fetchError) {
-        console.error('Error fetching reservation:', fetchError);
+      if (fetchError || !existingReservation) {
         throw new Error('No se pudo encontrar la reserva');
       }
-
-      console.log('Current reservation data:', existingReservation);
-      console.log('Updating database for reservation:', id);
       
       // Update status to confirmed in the database
       const { data: updatedData, error } = await supabase
         .from('reservations')
         .update({ 
           status: 'confirmed',
-          updated_at: new Date().toISOString() 
+          updated_at: new Date().toISOString()
         })
         .eq('id', id)
         .select();
 
-      console.log('Update response:', { data: updatedData, error });
-
       if (error) {
         console.error('Database update error:', error);
-        throw error;
+        throw new Error('Error al actualizar la base de datos');
       }
-      
-      if (!updatedData || updatedData.length === 0) {
-        console.error('No data returned from update operation');
-        // Try to fetch the reservation again to verify its current state
+
+      // Verify the update was applied
+      if (updatedData && updatedData.length > 0) {
+        // Double-check the status was actually updated
         const { data: currentData } = await supabase
           .from('reservations')
           .select('*')
           .eq('id', id)
           .single();
           
-        console.log('Current state after update attempt:', currentData);
-        
         if (currentData?.status !== 'confirmed') {
           throw new Error('La actualización no se aplicó correctamente en la base de datos');
         }
       }
 
-      console.log('Updating local state for reservation:', id);
       // Update local state with proper typing
-      setReservations(prev => {
-        const updated = prev.map(res => 
+      setReservations(prev => 
+        prev.map(res => 
           res.id === id 
             ? { 
                 ...res, 
-                status: 'confirmed' as const, 
-                updatedAt: new Date().toISOString() 
+                status: 'confirmed',
+                updatedAt: new Date().toISOString()
               } 
             : res
-        );
-        console.log('Local state updated:', updated.find(r => r.id === id));
-        return updated;
-      });
-      
-      console.log('Reservation confirmed successfully:', id);
+        )
+      );
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to confirm reservation';
-      console.error('Error in confirmReservation:', { id, error: err });
+      console.error('Error in confirmReservation:', errorMessage);
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
