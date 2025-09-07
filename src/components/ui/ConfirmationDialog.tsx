@@ -11,7 +11,7 @@ interface ConfirmationDialogProps {
   message: string;
   confirmText?: string;
   cancelText?: string;
-  variant?: 'default' | 'danger' | 'success';
+  variant?: 'default' | 'danger' | 'success' | 'warning' | 'boy' | 'girl';
   hideCancelButton?: boolean;
   onCancel?: () => void;
 }
@@ -28,19 +28,15 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   hideCancelButton = false,
   onCancel,
 }) => {
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-
-  const handleConfirm = async () => {
-    try {
-      setIsSubmitting(true);
-      await Promise.resolve(onConfirm());
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleConfirm = () => {
+    onConfirm();
+    onClose();
   };
 
   const handleCancel = () => {
-    onCancel?.();
+    if (onCancel) {
+      onCancel();
+    }
     onClose();
   };
 
@@ -50,6 +46,12 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         return 'bg-red-500 hover:bg-red-600';
       case 'success':
         return 'bg-green-500 hover:bg-green-600';
+      case 'warning':
+        return 'bg-yellow-500 hover:bg-yellow-600';
+      case 'boy':
+        return 'bg-blue-500 hover:bg-blue-600';
+      case 'girl':
+        return 'bg-pink-500 hover:bg-pink-600';
       default:
         return 'bg-blue-500 hover:bg-blue-600';
     }
@@ -68,7 +70,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <Dialog.Panel className="fixed inset-0 bg-black/30" />
+            <div className="fixed inset-0 bg-black bg-opacity-30" />
           </Transition.Child>
           
           {/* This element is to trick the browser into centering the modal contents. */}
@@ -85,7 +87,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <div className="relative inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
+            <Dialog.Panel className="relative inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
           <button
             onClick={onClose}
             className="absolute right-4 top-4 text-gray-400 hover:text-gray-500"
@@ -113,7 +115,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                 type="button"
                 className="inline-flex justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
                 onClick={handleCancel}
-                disabled={isSubmitting}
               >
                 {cancelText}
               </button>
@@ -122,12 +123,11 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
               type="button"
               className={`inline-flex justify-center px-4 py-2 text-sm font-medium text-white border border-transparent rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 ${getVariantStyles()}`}
               onClick={handleConfirm}
-              disabled={isSubmitting}
             >
               {confirmText}
             </button>
           </div>
-            </div>
+          </Dialog.Panel>
           </Transition.Child>
         </div>
       </Dialog>

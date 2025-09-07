@@ -7,6 +7,8 @@ interface PredictionsContextType {
   loading: boolean;
   error: string | null;
   addPrediction: (prediction: Omit<GenderPrediction, 'id' | 'created_at'>) => Promise<GenderPrediction | null>;
+  updatePrediction: (id: string, updates: Partial<GenderPrediction>) => Promise<GenderPrediction | null>;
+  getPredictionByGuest: (guestId: string) => Promise<GenderPrediction | null>;
   refreshPredictions: () => Promise<void>;
   getPredictionsByEvent: (eventId: string) => GenderPrediction[];
 }
@@ -98,6 +100,34 @@ export function PredictionsProvider({
     }
   }, []);
 
+  const updatePrediction = useCallback(async (id: string, updates: Partial<GenderPrediction>) => {
+    try {
+      const { data, error } = await supabase
+        .from('predictions')
+        .update({
+          prediction: updates.prediction,
+          name_suggestion: updates.name_suggestion,
+          message: updates.message || null
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const updatedPrediction = data as GenderPrediction;
+
+      setPredictions(prev => 
+        prev.map(p => p.id === id ? updatedPrediction : p)
+      );
+      return updatedPrediction;
+    } catch (err) {
+      console.error('Error updating prediction:', err);
+      setError('Error al actualizar la predicción');
+      return null;
+    }
+  }, []);
+
   const refreshPredictions = useCallback(async () => {
     await fetchPredictions();
   }, [fetchPredictions]);
@@ -106,6 +136,28 @@ export function PredictionsProvider({
     return predictions.filter(prediction => prediction.event_id === eventId);
   }, [predictions]);
 
+  const getPredictionByGuest = useCallback(async (guestId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('predictions')
+        .select('*')
+        .eq('guest_id', guestId)
+        .single(); 
+
+      if (error) {
+        if (error.code === 'PGRST116') { 
+          return null;
+        }
+        throw error;
+      }
+
+      return data as GenderPrediction;
+    } catch (err) {
+      console.error('Error fetching prediction by guest:', err);
+      return null;
+    }
+  }, []);
+
   return (
     <PredictionsContext.Provider 
       value={{
@@ -113,6 +165,8 @@ export function PredictionsProvider({
         loading,
         error,
         addPrediction,
+        updatePrediction,
+        getPredictionByGuest,
         refreshPredictions,
         getPredictionsByEvent
       }}
