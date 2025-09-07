@@ -35,7 +35,7 @@ const ScrollIndicator: React.FC<ScrollIndicatorProps> = ({ theme, targetId = 'co
   if (!isVisible) return null;
 
   return (
-    <div className="w-full">
+    <div className="w-full mt-16">
       <div 
         className={`fixed top-16 right-6 md:top-auto md:bottom-2 md:right-auto md:relative md:flex md:justify-center cursor-pointer z-50 animate-bounce ${getThemeColor()}`}
         onClick={scrollToContent}
