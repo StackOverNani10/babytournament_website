@@ -59,10 +59,20 @@ export function EventsProvider({ children, initialEvents }: EventsProviderProps)
       
       setEvents(mappedEvents);
       
-      // Only update currentEvent if it's not set or if the current event is no longer in the list
+      // Update currentEvent based on active status
       if (mappedEvents.length > 0) {
         const currentEventExists = currentEvent && mappedEvents.some(e => e.id === currentEvent.id);
-        if (!currentEvent || !currentEventExists) {
+        
+        // Find the first active event
+        const activeEvent = mappedEvents.find(e => e.isActive);
+        
+        if (activeEvent) {
+          // If we found an active event, use it
+          if (!currentEvent || currentEvent.id !== activeEvent.id) {
+            setCurrentEvent(activeEvent);
+          }
+        } else if (!currentEvent || !currentEventExists) {
+          // If no active event found, fall back to the first event
           setCurrentEvent(mappedEvents[0]);
         }
       } else {

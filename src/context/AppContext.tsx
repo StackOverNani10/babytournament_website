@@ -4,10 +4,6 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import { dataService } from '../lib/data/dataService';
 import { supabase } from '@/lib/supabase/client';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
-import { EventsProvider } from './events/EventsContext';
-import { ReservationsProvider } from './reservations/ReservationsContext';
-import { PredictionsProvider } from './predictions/PredictionsContext';
-import { GuestsProvider } from './guests/GuestsContext';
 
 // Helper function to map database event to app event type
 const mapDbEventToAppEvent = (dbEvent: any): Event => {
@@ -255,11 +251,9 @@ export function AppProvider({ children }: AppProviderProps) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        console.log('Fetching data from Supabase...');
         setIsLoading(true);
 
         // Fetch all data in parallel
-        console.log('Starting to fetch data...');
         const [
           eventsData, 
           productsData, 
@@ -289,14 +283,6 @@ export function AppProvider({ children }: AppProviderProps) {
           })
         ]);
 
-        console.log('Raw data from Supabase:', {
-          eventsData,
-          productsData,
-          categoriesData,
-          storesData,
-          reservationsData
-        });
-
         // Map database data to application types
         const mappedEvents = Array.isArray(eventsData)
           ? eventsData.map(mapDbEventToAppEvent)
@@ -313,13 +299,6 @@ export function AppProvider({ children }: AppProviderProps) {
         const mappedStores = Array.isArray(storesData)
           ? storesData.map(mapDbStoreToAppStore)
           : [];
-
-        console.log('Mapped data:', {
-          events: mappedEvents,
-          products: mappedProducts,
-          categories: mappedCategories,
-          stores: mappedStores
-        });
 
         setEvents(mappedEvents);
         setProducts(mappedProducts);
@@ -338,22 +317,12 @@ export function AppProvider({ children }: AppProviderProps) {
     fetchData();
   }, []);
 
-  // Debug currentEvent changes
-  useEffect(() => {
-    console.log('currentEvent changed:', currentEvent);
-  }, [currentEvent]);
-
   // Set the first event as active by default if none is active
   useEffect(() => {
     // Only run this effect if we have events and no current event is set
     if (events && events.length > 0 && !currentEvent) {
-      console.log('Initial events load. Total events:', events.length);
       const activeEvent = events.find(event => event.isActive) || events[0];
-      console.log('Setting initial current event:', activeEvent);
       setCurrentEvent(activeEvent);
-    } else if (events && events.length === 0) {
-      console.warn('No events available to set as current event');
-      setCurrentEvent(null);
     }
   }, [events, currentEvent]);
 
@@ -362,7 +331,6 @@ export function AppProvider({ children }: AppProviderProps) {
     if (events && events.length > 0 && currentEvent) {
       const activeEvent = events.find(event => event.isActive);
       if (activeEvent && activeEvent.id !== currentEvent.id) {
-        console.log('Active event changed, updating current event:', activeEvent);
         setCurrentEvent(activeEvent);
       }
     }
@@ -378,7 +346,6 @@ export function AppProvider({ children }: AppProviderProps) {
   const addReservation = useCallback(async (reservation: Omit<GiftReservation, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'eventId'> & { eventId?: string }): Promise<GiftReservation | null> => {
     // Use provided eventId or fall back to currentEvent
     const targetEventId = reservation.eventId || currentEvent?.id;
-    console.log('Attempting to make reservation. Event ID:', targetEventId, 'Current event:', currentEvent);
     
     if (!targetEventId) {
       const errorMsg = 'No se pudo determinar el evento para la reservación';

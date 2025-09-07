@@ -2,6 +2,7 @@ import { Toaster, toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
+import { usePredictions } from './context/predictions/PredictionsContext';
 import { EventsProvider } from './context/events/EventsContext';
 import { ReservationsProvider } from './context/reservations/ReservationsContext';
 import { PredictionsProvider } from './context/predictions/PredictionsContext';
@@ -35,7 +36,8 @@ import Alert from './components/ui/Alert';
 
 // Mover HomePage fuera del componente App para evitar re-renderizados innecesarios
 const HomePageContent: React.FC = () => {
-  const { currentEvent, selectedTheme, setSelectedTheme: originalSetSelectedTheme, predictions } = useApp();
+  const { currentEvent, selectedTheme, setSelectedTheme: originalSetSelectedTheme } = useApp();
+  const { predictions } = usePredictions();
   const [showPredictionModal, setShowPredictionModal] = useState(false);
   const predictionsRef = useRef<HTMLDivElement>(null);
   const [showAlert, setShowAlert] = useState(!localStorage.getItem('predictionAlertDismissed'));

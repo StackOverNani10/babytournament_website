@@ -14,7 +14,7 @@ interface PredictionModalProps {
 }
 
 const PredictionModal: React.FC<PredictionModalProps> = ({ isOpen, onClose, selectedGender }) => {
-  const { addPrediction, updatePrediction, getPredictionByGuest } = usePredictions();
+  const { addPrediction, updatePrediction, getPredictionByGuest, refreshPredictions } = usePredictions();
   const { getGuestByEmail, addGuest, currentEvent } = useGuests();
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [existingPrediction, setExistingPrediction] = useState<GenderPrediction | null>(null);
@@ -73,6 +73,7 @@ const PredictionModal: React.FC<PredictionModalProps> = ({ isOpen, onClose, sele
     try {
       const result = await updatePrediction(existingPrediction.id, existingPrediction);
       if (result) {
+        await refreshPredictions(); // Refresh predictions after update
         setDialogMessage('¡Tu predicción ha sido actualizada con éxito! 🎉');
         setShowSuccessDialog(true);
       }
@@ -155,6 +156,7 @@ const PredictionModal: React.FC<PredictionModalProps> = ({ isOpen, onClose, sele
       } else {
         const result = await addPrediction(predictionData);
         if (result) {
+          await refreshPredictions(); // Refresh predictions after adding
           setDialogMessage('¡Tu predicción ha sido registrada con éxito! 🎉');
           setShowSuccessDialog(true);
           setFormData({ guestName: '', guestEmail: '', suggestedName: '', message: '' });
