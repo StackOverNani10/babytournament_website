@@ -700,8 +700,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                           <div className="flex justify-between items-center gap-4 text-xs text-slate-500">
                             <div className="flex-1 min-w-0">
                               {prediction.message && (
-                                <div className="text-sm text-slate-300 italic truncate" title={prediction.message}>
-                                  Mensaje: "{prediction.message}"
+                                <div className="text-sm text-slate-300 italic break-words whitespace-pre-wrap max-h-24 overflow-y-auto pr-2">
+                                  <span className="font-medium">Mensaje:</span> {prediction.message}
                                 </div>
                               )}
                             </div>
