@@ -99,7 +99,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
     getProductReservations
   } = useReservations();
 
-  const { products } = useApp();
+  const { products, rejectReservation, showConfirmDialog } = useApp();
 
   // Get predictions and guests data
   const { predictions: rawPredictions, loading: predictionsLoading, refreshPredictions } = usePredictions();
@@ -196,13 +196,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [showFilter, setShowFilter] = useState(false);
   const [visiblePredictions, setVisiblePredictions] = useState(10);
+  const [visibleReservations, setVisibleReservations] = useState(10);
   const [filters, setFilters] = useState({
     eventType: '' as EventType | '',
     storeId: '',
     minPrice: '',
     maxPrice: '',
     inStock: false,
-    lowStock: false
+    lowStock: false,
+    status: 'all' as 'all' | 'pending' | 'confirmed' | 'cancelled'
   });
 
   // State for product management
@@ -573,34 +575,61 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
           {/* Reservations Tab */}
           {activeTab === 'reservations' && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                 <h4 className="text-xl font-semibold text-white">
                   Reservas Recientes
                 </h4>
-                <span className="text-sm text-slate-400">
-                  {reservations.length} en total
-                </span>
+                <div className="flex items-center gap-4 w-full sm:w-auto">
+                  <div className="relative">
+                    <select
+                      value={filters.status}
+                      onChange={(e) => setFilters(prev => ({
+                        ...prev,
+                        status: e.target.value as 'all' | 'pending' | 'confirmed' | 'cancelled'
+                      }))}
+                      className="appearance-none bg-slate-800 border border-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 pr-8 text-white"
+                    >
+                      <option value="all">Todas las reservas</option>
+                      <option value="pending">Pendientes</option>
+                      <option value="confirmed">Confirmadas</option>
+                      <option value="cancelled">Canceladas</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                      <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <span className="text-sm text-slate-400 whitespace-nowrap">
+                    {reservations.filter(r => filters.status === 'all' || r.status === filters.status).length} de {reservations.length}
+                  </span>
+                </div>
               </div>
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-                {reservations.slice(0, 10).map((reservation) => {
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800 hover:scrollbar-thumb-slate-500 scrollbar-thumb-rounded-full">
+                {reservations
+                  .filter(reservation => 
+                    filters.status === 'all' || reservation.status === filters.status
+                  )
+                  .slice(0, visibleReservations)
+                  .map((reservation) => {
                   const product = products.find(p => p.id === reservation.productId);
                   return (
-                    <div key={reservation.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 hover:border-slate-600 transition-colors">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-start gap-3">
-                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-700 flex-shrink-0">
+                    <div key={reservation.id} className="bg-slate-800 p-3 sm:p-4 rounded-xl border border-slate-700 hover:border-slate-600 transition-colors">
+                      <div className="flex flex-col sm:flex-row justify-between gap-2 sm:items-start">
+                        <div className="flex items-start gap-3 w-full sm:w-auto">
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-slate-700 flex-shrink-0">
                             <img
                               src={product?.imageUrl}
                               alt={product?.name}
                               className="w-full h-full object-cover"
                             />
                           </div>
-                          <div>
-                            <h5 className="font-medium text-white">{reservation.guestName}</h5>
-                            <div className="text-sm text-slate-400">
+                          <div className="flex-1 min-w-0">
+                            <h5 className="font-medium text-white truncate">{reservation.guestName}</h5>
+                            <div className="text-sm text-slate-400 truncate">
                               {product?.name} × {reservation.quantity}
                             </div>
-                            <div className="text-xs text-slate-500 mt-1">
+                            <div className="text-xs text-slate-500 mt-0.5">
                               {new Date(reservation.createdAt).toLocaleDateString('es-ES', {
                                 day: '2-digit',
                                 month: 'short',
@@ -611,33 +640,96 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full sm:w-auto mt-2 sm:mt-0">
                           <Badge
-                            variant={reservation.status === 'confirmed' ? 'success' : 'default'}
-                            className="text-xs px-2 py-1"
+                            variant={
+                              reservation.status === 'confirmed' 
+                                ? 'success' 
+                                : reservation.status === 'cancelled' 
+                                  ? 'error' 
+                                  : 'default'
+                            }
+                            className="text-xs px-2 py-1 self-start sm:self-center"
                           >
-                            {reservation.status === 'confirmed' ? 'Confirmado' : 'Pendiente'}
+                            {reservation.status === 'confirmed' 
+                              ? 'Confirmado' 
+                              : reservation.status === 'cancelled' 
+                                ? 'Cancelado' 
+                                : 'Pendiente'}
                           </Badge>
                           {reservation.status === 'pending' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                confirmReservation(reservation.id);
-                              }}
-                              className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                              title="Confirmar reserva"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                              Confirmar
-                            </button>
+                            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const confirmed = await showConfirmDialog(
+                                    '¿Estás seguro?',
+                                    '¿Deseas marcar esta reserva como cancelada? Esta acción no se puede deshacer.',
+                                    async () => {
+                                      try {
+                                        await rejectReservation(reservation.id);
+                                        toast.success('Reserva cancelada correctamente');
+                                        return true;
+                                      } catch (error) {
+                                        console.error('Error al cancelar la reserva:', error);
+                                        toast.error('Error al cancelar la reserva');
+                                        return false;
+                                      }
+                                    }
+                                  );
+                                }}
+                                className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 w-full sm:w-auto"
+                                title="Cancelar reserva"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                                <span className="truncate">Cancelar</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  confirmReservation(reservation.id);
+                                }}
+                                className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 w-full sm:w-auto"
+                                title="Confirmar reserva"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                <span className="truncate">Confirmar</span>
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
                     </div>
                   );
                 })}
+                
+                {reservations.filter(r => filters.status === 'all' || r.status === filters.status).length > visibleReservations && (
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={() => setVisibleReservations(prev => prev + 10)}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Mostrar más reservas
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                {visibleReservations > 10 && reservations.filter(r => filters.status === 'all' || r.status === filters.status).length > 10 && (
+                  <div className="mt-2 text-center">
+                    <button
+                      onClick={() => setVisibleReservations(10)}
+                      className="text-sm text-slate-400 hover:text-slate-300 transition-colors"
+                    >
+                      Mostrar menos
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

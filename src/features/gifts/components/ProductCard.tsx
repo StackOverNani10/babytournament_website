@@ -37,7 +37,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, theme = 'neutral' })
   const availableQuantity = getAvailableQuantity(product.id);
   const isAvailable = isProductAvailable(product.id);
   const productReservations = getProductReservations(product.id);
-  const totalReserved = productReservations.reduce((sum, r) => sum + r.quantity, 0);
+  const totalReserved = productReservations
+    .filter(r => r.status !== 'cancelled')
+    .reduce((sum, r) => sum + r.quantity, 0);
   
   // Get the appropriate URL for the product
   const productUrl = product.productUrl || store?.website;
@@ -237,9 +239,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, theme = 'neutral' })
             </div>
 
             {/* Reserved by count */}
-            {productReservations.length > 0 && (
+            {productReservations.filter(r => r.status !== 'cancelled').length > 0 && (
               <div className="text-xs text-gray-500 text-center pt-2 mt-2">
-                Reservado por {productReservations.length} {productReservations.length === 1 ? 'invitado' : 'invitados'}
+                Reservado por {productReservations.filter(r => r.status !== 'cancelled').length} 
+                {productReservations.filter(r => r.status !== 'cancelled').length === 1 ? ' invitado' : ' invitados'}
               </div>
             )}
           </div>
