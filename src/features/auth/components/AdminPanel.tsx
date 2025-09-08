@@ -196,6 +196,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [showFilter, setShowFilter] = useState(false);
   const [visiblePredictions, setVisiblePredictions] = useState(10);
+  const [genderFilter, setGenderFilter] = useState<'all' | 'boy' | 'girl'>('all');
   const [visibleReservations, setVisibleReservations] = useState(10);
   const [filters, setFilters] = useState({
     eventType: '' as EventType | '',
@@ -236,7 +237,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
 
   // Helper function to get product details
   const getProductDetails = (product: Product) => {
-    const productReservations = reservations.filter(r => r.productId === product.id);
+    const productReservations = reservations.filter(r => r.productId === product.id && r.status !== 'cancelled');
     const totalReserved = productReservations.reduce((sum, r) => sum + r.quantity, 0);
     const maxQty = product.maxQuantity || 10;
     const progress = Math.min((totalReserved / maxQty) * 100, 100);
@@ -270,20 +271,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
     navigate('/');
   };
 
+  // Filter out cancelled reservations
+  const activeReservations = reservations?.filter(r => r.status !== 'cancelled') || [];
+
   // Calculate statistics
   const stats = {
     totalProducts: products?.length || 0,
-    totalReservations: reservations?.length || 0,
+    totalReservations: activeReservations.length,
     totalPredictions: predictions?.length || 0,
-    uniqueGuests: new Set(reservations?.map(r => r.guestEmail) || []).size,
+    uniqueGuests: new Set(activeReservations.map(r => r.guestEmail)).size,
     boyPredictions: predictions?.filter(p => p.prediction === 'boy').length || 0,
     girlPredictions: predictions?.filter(p => p.prediction === 'girl').length || 0,
     totalNameSuggestions: predictions?.filter(p => p.name_suggestion).length || 0,
     totalMessages: predictions?.filter(p => p.message).length || 0,
     completionRate: products?.length
-      ? Math.round(((reservations?.length || 0) / products.length) * 100)
+      ? Math.round((activeReservations.length / products.length) * 100)
       : 0,
-    totalValue: reservations?.reduce((sum, r) => {
+    totalValue: activeReservations.reduce((sum, r) => {
       const product = products?.find((p: Product) => p.id === r.productId);
       return sum + (product ? product.price * r.quantity : 0);
     }, 0) || 0
@@ -292,9 +296,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   const popularProducts = (products || [])
     .map((product: Product) => ({
       product,
-      reservations: getProductReservations(product.id).length
+      reservations: getProductReservations(product.id).filter(r => r.status !== 'cancelled').length
     }))
-    .sort((a: { product: Product; reservations: number }, b: { product: Product; reservations: number }) => b.reservations - a.reservations)
+    .sort((a, b) => b.reservations - a.reservations)
     .slice(0, 5);
 
   // State for data management
@@ -737,12 +741,44 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
           {/* Predictions Tab */}
           {activeTab === 'predictions' && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="text-xl font-semibold text-white">
-                  Predicciones y Nombres
-                </h4>
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
+                <div>
+                  <h4 className="text-xl font-semibold text-white">
+                    Predicciones y Nombres
+                  </h4>
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      onClick={() => setGenderFilter('all')}
+                      className={`px-3 py-1 text-sm rounded-full ${genderFilter === 'all' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      onClick={() => setGenderFilter('boy')}
+                      className={`px-3 py-1 text-sm rounded-full flex items-center gap-1 ${genderFilter === 'boy' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-slate-700 text-blue-400 hover:bg-slate-600'}`}
+                    >
+                      👶 Niño
+                    </button>
+                    <button
+                      onClick={() => setGenderFilter('girl')}
+                      className={`px-3 py-1 text-sm rounded-full flex items-center gap-1 ${genderFilter === 'girl' 
+                        ? 'bg-pink-600 text-white' 
+                        : 'bg-slate-700 text-pink-400 hover:bg-slate-600'}`}
+                    >
+                      👧 Niña
+                    </button>
+                  </div>
+                </div>
                 <span className="text-sm text-slate-400">
-                  {predictions.length} en total
+                  {predictions.filter(p => 
+                    genderFilter === 'all' || 
+                    (genderFilter === 'boy' && p.prediction === 'boy') || 
+                    (genderFilter === 'girl' && p.prediction === 'girl')
+                  ).length} {genderFilter === 'all' ? 'en total' : genderFilter === 'boy' ? 'niños' : 'niñas'}
                 </span>
               </div>
 
@@ -753,7 +789,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
               ) : (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {predictions.slice(0, visiblePredictions).map((prediction: any) => {
+                    {predictions
+                    .filter(prediction => 
+                      genderFilter === 'all' || 
+                      (genderFilter === 'boy' && prediction.prediction === 'boy') || 
+                      (genderFilter === 'girl' && prediction.prediction === 'girl')
+                    )
+                    .slice(0, visiblePredictions)
+                    .map((prediction: any) => {
                       const guestName = prediction.guest_name || prediction.guest?.name || 'Invitado';
                       const isBoy = prediction.prediction === 'boy';
 
@@ -813,7 +856,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                     })}
                   </div>
 
-                  {predictions.length > visiblePredictions && (
+                  {predictions.filter(p => 
+                    genderFilter === 'all' || 
+                    (genderFilter === 'boy' && p.prediction === 'boy') || 
+                    (genderFilter === 'girl' && p.prediction === 'girl')
+                  ).length > visiblePredictions && (
                     <div className="mt-4 text-center">
                       <button
                         onClick={() => setVisiblePredictions(prev => prev + 10)}
@@ -976,7 +1023,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                     if (filters.maxPrice && product.price > Number(filters.maxPrice)) return false;
 
                     // Filtrar por disponibilidad
-                    const productReservations = reservations.filter(r => r.productId === product.id);
+                    const productReservations = reservations.filter(r => r.productId === product.id && r.status !== 'cancelled');
                     const totalReserved = productReservations.reduce((sum, r) => sum + r.quantity, 0);
                     const maxQty = product.maxQuantity || 10;
 
@@ -986,7 +1033,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                     return true;
                   })
                   .map((product) => {
-                    const productReservations = reservations.filter(r => r.productId === product.id);
+                    const productReservations = reservations.filter(r => r.productId === product.id && r.status !== 'cancelled');
                     const totalReserved = productReservations.reduce((sum, r) => sum + r.quantity, 0);
                     const maxQty = product.maxQuantity || 10;
                     const progress = Math.min((totalReserved / maxQty) * 100, 100);
