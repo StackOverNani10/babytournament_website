@@ -201,11 +201,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   const [filters, setFilters] = useState({
     eventType: '' as EventType | '',
     storeId: '',
+    status: 'all' as 'all' | 'reserved' | 'confirmed' | 'cancelled' | 'pending' | 'rejected',
     minPrice: '',
     maxPrice: '',
+    search: '',
+    gender: 'all' as 'all' | 'boy' | 'girl',
     inStock: false,
     lowStock: false,
-    status: 'all' as 'all' | 'pending' | 'confirmed' | 'cancelled'
+  });
+  
+  // State for sorting
+  const [sortConfig, setSortConfig] = useState<{
+    key: 'createdAt' | 'guestName' | 'productName' | 'quantity' | 'status';
+    direction: 'asc' | 'desc';
+  }>({
+    key: 'createdAt',
+    direction: 'desc',
   });
 
   // State for product management
@@ -609,11 +620,76 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                   </span>
                 </div>
               </div>
+              {/* Sort controls */}
+              <div className="flex flex-wrap gap-2 mb-2">
+                <span className="text-sm text-slate-300 self-center">Ordenar por:</span>
+                {[
+                  { key: 'createdAt', label: 'Fecha' },
+                  { key: 'guestName', label: 'Invitado' },
+                  { key: 'productName', label: 'Producto' },
+                  { key: 'quantity', label: 'Cantidad' },
+                  { key: 'status', label: 'Estado' },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setSortConfig(prev => ({
+                        key: key as any,
+                        direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+                      }));
+                    }}
+                    className={`text-xs px-3 py-1 rounded-lg transition-colors ${
+                      sortConfig.key === key
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    }`}
+                  >
+                    {label} {sortConfig.key === key && (
+                      sortConfig.direction === 'asc' ? '↑' : '↓'
+                    )}
+                  </button>
+                ))}
+              </div>
+              
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-slate-800 hover:scrollbar-thumb-slate-500 scrollbar-thumb-rounded-full">
                 {reservations
                   .filter(reservation => 
                     filters.status === 'all' || reservation.status === filters.status
                   )
+                  .sort((a, b) => {
+                    // Get the values to compare
+                    let aValue: any, bValue: any;
+                    
+                    // Handle different sort fields
+                    if (sortConfig.key === 'productName') {
+                      const productA = products.find(p => p.id === a.productId);
+                      const productB = products.find(p => p.id === b.productId);
+                      aValue = productA?.name || '';
+                      bValue = productB?.name || '';
+                    } else if (sortConfig.key === 'guestName') {
+                      aValue = a.guestName || '';
+                      bValue = b.guestName || '';
+                    } else {
+                      aValue = a[sortConfig.key as keyof typeof a];
+                      bValue = b[sortConfig.key as keyof typeof b];
+                    }
+                    
+                    // Handle different value types
+                    if (typeof aValue === 'string' && typeof bValue === 'string') {
+                      return sortConfig.direction === 'asc' 
+                        ? aValue.localeCompare(bValue)
+                        : bValue.localeCompare(aValue);
+                    } else if (aValue instanceof Date && bValue instanceof Date) {
+                      return sortConfig.direction === 'asc'
+                        ? aValue.getTime() - bValue.getTime()
+                        : bValue.getTime() - aValue.getTime();
+                    } else {
+                      // For numbers and other types
+                      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                      return 0;
+                    }
+                  })
                   .slice(0, visibleReservations)
                   .map((reservation) => {
                   const product = products.find(p => p.id === reservation.productId);

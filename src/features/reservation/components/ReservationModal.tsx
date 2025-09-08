@@ -108,7 +108,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
   }>>([]);
   const [selectedReservationId, setSelectedReservationId] = useState<string | null>(null);
   const [showReservationOptions, setShowReservationOptions] = useState(false);
-  const [reservationAction, setReservationAction] = useState<'update' | 'add' | 'replace' | 'cancel' | null>(null);
+  const [reservationAction, setReservationAction] = useState<'update' | 'add' | 'replace' | 'cancel' | 'new' | null>(null);
 
   // Get the current reservation being modified
   const getSelectedReservation = () => {
@@ -182,8 +182,16 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
     return () => clearTimeout(timer);
   }, [formData.guestEmail, currentEvent]);
 
-  const handleReservationAction = async (action: 'update' | 'add' | 'replace' | 'cancel') => {
+  const handleReservationAction = async (action: 'update' | 'add' | 'replace' | 'cancel' | 'new') => {
     setReservationAction(action);
+    
+    if (action === 'new') {
+      // Clear any existing reservation action to allow creating a new one
+      setReservationAction(null);
+      setSelectedReservationId(null);
+      setShowReservationOptions(false);
+      return;
+    }
     
     if (action === 'cancel' && selectedReservationId) {
       try {
@@ -670,10 +678,10 @@ Detalles:
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleReservationAction('add')}
+                        onClick={() => handleReservationAction('new')}
                         className="w-full text-left p-2 bg-white border border-yellow-400 rounded hover:bg-yellow-50"
                       >
-                        Agregar como nueva reserva
+                        Crear como reserva nueva
                       </button>
                     </>
                   )}
