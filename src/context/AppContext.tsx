@@ -85,6 +85,7 @@ interface AppContextType {
   addReservation: (reservation: Omit<GiftReservation, 'id' | 'createdAt'>) => void;
   addPrediction: (prediction: Omit<GenderPrediction, 'id' | 'createdAt' | 'guest_id'> & { guest_name: string; guest_email: string }) => Promise<GenderPrediction | null>;
   cancelReservation: (id: string) => void;
+  rejectReservation: (id: string) => Promise<GiftReservation | null>;
   getAvailableQuantity: (productId: string) => number;
   isProductAvailable: (productId: string) => boolean;
   getProductReservations: (productId: string) => GiftReservation[];
@@ -427,7 +428,7 @@ export function AppProvider({ children }: AppProviderProps) {
       const newReservationData = {
         guest_id: guestData.id,
         product_id: reservationInfo.productId,
-        status: 'confirmed',
+        status: 'pending', 
         quantity: reservationInfo.quantity,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -451,7 +452,7 @@ export function AppProvider({ children }: AppProviderProps) {
         guestName: reservationInfo.guestName.trim(),
         guestEmail: guestEmail,
         quantity: reservationInfo.quantity,
-        status: 'reserved',
+        status: 'pending', 
         createdAt: createdReservation.created_at,
         updatedAt: createdReservation.updated_at
       };
@@ -611,10 +612,6 @@ export function AppProvider({ children }: AppProviderProps) {
     }
   }, [currentEvent, predictions, setPredictions, showConfirmDialog]);
 
-  const cancelReservation = (id: string) => {
-    setReservations(prev => prev.filter(r => r.id !== id));
-  };
-
   const getAvailableQuantity = useCallback((productId: string) => {
     const product = products.find(p => p.id === productId);
     if (!product) return 0;
@@ -651,6 +648,56 @@ export function AppProvider({ children }: AppProviderProps) {
     );
   };
 
+  const rejectReservation = useCallback(async (id: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('reservations')
+        .update({ 
+          status: 'cancelled' as const, 
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setReservations(prev => 
+        prev.map(r => 
+          r.id === id 
+            ? { 
+                ...r, 
+                status: 'cancelled', 
+                updatedAt: new Date().toISOString() 
+              } 
+            : r
+        ) as GiftReservation[]
+      );
+      
+      return data;
+    } catch (error) {
+      console.error('Error rejecting reservation:', error);
+      throw error;
+    }
+  }, []);
+
+  const cancelReservation = useCallback(async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('reservations')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setReservations(prev => prev.filter(r => r.id !== id));
+      return true;
+    } catch (error) {
+      console.error('Error deleting reservation:', error);
+      throw error;
+    }
+  }, []);
+
   const refreshEvents = useCallback(async (): Promise<void> => {
     try {
       const { data, error } = await supabase
@@ -686,8 +733,8 @@ export function AppProvider({ children }: AppProviderProps) {
     }
   }, []);
 
-    // Memoize the context value to prevent unnecessary re-renders
-  const contextValue = useMemo(() => ({
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo<AppContextType>(() => ({
     currentEvent,
     events,
     products,
@@ -703,6 +750,7 @@ export function AppProvider({ children }: AppProviderProps) {
     addReservation,
     addPrediction,
     cancelReservation,
+    rejectReservation,
     getAvailableQuantity,
     isProductAvailable,
     getProductReservations,
@@ -721,12 +769,18 @@ export function AppProvider({ children }: AppProviderProps) {
     selectedTheme,
     isLoading,
     error,
+    setSelectedTheme,
     addReservation,
     addPrediction,
+    cancelReservation,
+    rejectReservation,
     getAvailableQuantity,
     isProductAvailable,
     getProductReservations,
+    updateEvent,
+    setActiveEvent,
     showConfirmDialog,
+    refreshEvents,
   ]);
 
   return (
@@ -739,9 +793,10 @@ export function AppProvider({ children }: AppProviderProps) {
         onCancel={confirmationConfig.onCancel}
         title={confirmationConfig.title}
         message={confirmationConfig.message}
-        confirmText="Actualizar"
+        confirmText="Confirmar"
         cancelText="Cancelar"
         variant="default"
+        adminStyle={true}
       />
     </AppContext.Provider>
   );

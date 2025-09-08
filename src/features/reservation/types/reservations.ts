@@ -1,6 +1,6 @@
 import { Product } from '../../gifts/types/products';
 
-export type ReservationStatus = 'reserved' | 'confirmed' | 'cancelled' | 'pending';
+export type ReservationStatus = 'reserved' | 'confirmed' | 'cancelled' | 'pending' | 'rejected';
 
 export interface GiftReservation {
   id: string;
