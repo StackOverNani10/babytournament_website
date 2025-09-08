@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Gift, User, Mail, Check } from 'lucide-react';
 import { Product } from '../../../types';
 import { useApp } from '../../../context/AppContext';
+import { supabase } from '../../../lib/supabase/client';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
 
@@ -59,7 +60,7 @@ interface ReservationModalProps {
 }
 
 const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, maxQuantity }) => {
-  const { selectedTheme, addReservation, currentEvent, stores: allStores } = useApp();
+  const { selectedTheme, addReservation, currentEvent, stores: allStores, rejectReservation } = useApp();
   const theme = selectedTheme || 'neutral';
   const themeColors = getThemeColors(theme);
   const [isQuantityOpen, setIsQuantityOpen] = useState(false);
@@ -99,20 +100,128 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingReservations, setExistingReservations] = useState<Array<{
+    id: string;
+    quantity: number;
+    productId: string;
+    productName: string;
+  }>>([]);
+  const [selectedReservationId, setSelectedReservationId] = useState<string | null>(null);
+  const [showReservationOptions, setShowReservationOptions] = useState(false);
+  const [reservationAction, setReservationAction] = useState<'update' | 'add' | 'replace' | 'cancel' | null>(null);
+
+  // Get the current reservation being modified
+  const getSelectedReservation = () => {
+    return selectedReservationId 
+      ? existingReservations.find(r => r.id === selectedReservationId) 
+      : null;
+  };
+
+  // Check for existing reservations when email changes
+  useEffect(() => {
+    const checkExistingReservations = async () => {
+      if (!currentEvent || !formData.guestEmail.trim()) return;
+      
+      try {
+        // First, get the guest ID by email
+        const { data: guestData, error: guestError } = await supabase
+          .from('guests')
+          .select('id')
+          .eq('event_id', currentEvent.id)
+          .eq('email', formData.guestEmail.trim())
+          .single();
+          
+        if (guestError || !guestData) {
+          setExistingReservations([]);
+          setShowReservationOptions(false);
+          return;
+        }
+        
+        // Then get the reservations for this guest
+        const { data: reservations, error } = await supabase
+          .from('reservations')
+          .select(`
+            id, 
+            quantity, 
+            product_id,
+            products:product_id (id, name)
+          `)
+          .eq('guest_id', guestData.id)
+          .neq('status', 'cancelled');
+          
+        if (error) throw error;
+        
+        if (reservations && reservations.length > 0) {
+          const mappedReservations = reservations.map(r => {
+            const product = Array.isArray(r.products) ? r.products[0] : r.products;
+            return {
+              id: r.id,
+              quantity: r.quantity,
+              productId: r.product_id,
+              productName: product?.name || 'un producto'
+            };
+          });
+          
+          setExistingReservations(mappedReservations);
+          setShowReservationOptions(true);
+          
+          // Auto-select the first reservation if none selected
+          if (!selectedReservationId && mappedReservations.length > 0) {
+            setSelectedReservationId(mappedReservations[0].id);
+          }
+        } else {
+          setExistingReservations([]);
+          setShowReservationOptions(false);
+        }
+      } catch (err) {
+        console.error('Error checking existing reservations:', err);
+      }
+    };
+    
+    const timer = setTimeout(checkExistingReservations, 500);
+    return () => clearTimeout(timer);
+  }, [formData.guestEmail, currentEvent]);
+
+  const handleReservationAction = async (action: 'update' | 'add' | 'replace' | 'cancel') => {
+    setReservationAction(action);
+    
+    if (action === 'cancel' && selectedReservationId) {
+      try {
+        setIsSubmitting(true);
+        
+        // Use the rejectReservation function from context to update the global state
+        await rejectReservation(selectedReservationId);
+        
+        // Remove the cancelled reservation from the list
+        setExistingReservations(prev => 
+          prev.filter(r => r.id !== selectedReservationId)
+        );
+        setSelectedReservationId(null);
+        
+        // If no more reservations, close the options and the modal
+        if (existingReservations.length <= 1) {
+          setShowReservationOptions(false);
+          // Close the modal after a short delay to show success
+          setTimeout(() => onClose(), 700);
+        }
+      } catch (error) {
+        console.error('Error cancelling reservation:', error);
+        setError('No se pudo cancelar la reserva. Intenta nuevamente.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      setShowReservationOptions(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     
-    // Debug current state
-    console.log('Submitting reservation with currentEvent:', currentEvent);
-    console.log('Product:', product);
-    console.log('Form data:', formData);
-    
     // Check if we have a current event
     if (!currentEvent) {
       const errorMsg = 'No hay un evento activo. Por favor, actualiza la página e intenta de nuevo.';
-      console.error(errorMsg);
       setError(errorMsg);
       return;
     }
@@ -139,27 +248,68 @@ const ReservationModal: React.FC<ReservationModalProps> = ({ product, onClose, m
     }
     
     if (formData.quantity > maxQuantity) {
-      const errorMsg = `No hay suficiente disponibilidad. Máximo disponible: ${maxQuantity}`;
-      console.warn(errorMsg, { requested: formData.quantity, available: maxQuantity });
-      setError(errorMsg);
+      setError(`No hay suficiente disponibilidad. Máximo disponible: ${maxQuantity}`);
       return;
     }
 
     setIsSubmitting(true);
     
     try {
-      const reservationData = {
-        eventId: currentEvent.id,
-        productId: product.id,
-        guestName: formData.guestName.trim(),
-        guestEmail: formData.guestEmail.trim(),
-        quantity: formData.quantity,
-        status: 'reserved' as const,
-        updatedAt: new Date().toISOString()
-      };
+      const email = formData.guestEmail.trim();
+      const name = formData.guestName.trim();
       
-      console.log('Creating reservation with data:', reservationData);
-      await addReservation(reservationData);
+      // Handle different reservation actions
+      if (reservationAction === 'update' && existingReservations.length > 0) {
+        // Update existing reservation
+        const { error: updateError } = await supabase
+          .from('reservations')
+          .update({
+            quantity: formData.quantity,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingReservations[0].id);
+          
+        if (updateError) throw updateError;
+      } else if (reservationAction === 'replace' && existingReservations.length > 0) {
+        // Cancel existing reservation using the context function
+        await rejectReservation(existingReservations[0].id);
+        
+        // Create new reservation
+        await addReservation({
+          eventId: currentEvent.id,
+          productId: product.id,
+          guestName: name,
+          guestEmail: email,
+          quantity: formData.quantity,
+          status: 'reserved' as const,
+          updatedAt: new Date().toISOString()
+        });
+      } else if (reservationAction === 'add' && existingReservations.length > 0) {
+        // Add to existing reservation quantity
+        const existingQuantity = existingReservations[0].quantity;
+        const newQuantity = existingQuantity + formData.quantity;
+        
+        const { error: updateError } = await supabase
+          .from('reservations')
+          .update({
+            quantity: newQuantity,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingReservations[0].id);
+          
+        if (updateError) throw updateError;
+      } else {
+        // Default: Create new reservation
+        await addReservation({
+          eventId: currentEvent.id,
+          productId: product.id,
+          guestName: name,
+          guestEmail: email,
+          quantity: formData.quantity,
+          status: 'reserved' as const,
+          updatedAt: new Date().toISOString()
+        });
+      }
       
       setIsSuccess(true);
       
@@ -436,6 +586,102 @@ Detalles:
             </p>
           </div>
 
+          {/* Reservation List */}
+          {showReservationOptions && existingReservations.length > 0 && (
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+              <p className="text-yellow-700 font-medium mb-3">Tus reservaciones actuales:</p>
+              
+              <div className="space-y-3 mb-4">
+                {existingReservations.map((reservation) => (
+                  <div 
+                    key={reservation.id}
+                    onClick={() => setSelectedReservationId(reservation.id === selectedReservationId ? null : reservation.id)}
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                      selectedReservationId === reservation.id 
+                        ? 'border-blue-500 bg-blue-50' 
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="font-medium">{reservation.productName}</p>
+                        <p className="text-sm text-gray-600">Cantidad: {reservation.quantity}</p>
+                      </div>
+                      {selectedReservationId === reservation.id && (
+                        <Check className="h-5 w-5 text-blue-600" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {selectedReservationId && (
+                <div className="space-y-2">
+                  <p className="text-yellow-700 mb-2">¿Qué deseas hacer con la reserva seleccionada?</p>
+                  
+                  {getSelectedReservation()?.productId === product.id ? (
+                    // Same product options
+                    formData.quantity !== getSelectedReservation()?.quantity ? (
+                      // Different quantity
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleReservationAction('update')}
+                          className="w-full text-left p-2 bg-white border border-yellow-400 rounded hover:bg-yellow-50"
+                        >
+                          Actualizar a {formData.quantity} unidades
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleReservationAction('add')}
+                          className="w-full text-left p-2 bg-white border border-yellow-400 rounded hover:bg-yellow-50"
+                        >
+                          Agregar {formData.quantity} unidades más (total: {(getSelectedReservation()?.quantity || 0) + formData.quantity})
+                        </button>
+                      </>
+                    ) : (
+                      // Same quantity
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleReservationAction('add')}
+                          className="w-full text-left p-2 bg-white border border-yellow-400 rounded hover:bg-yellow-50"
+                        >
+                          Agregar 1 unidad más (total: {(getSelectedReservation()?.quantity || 0) + 1})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleReservationAction('cancel')}
+                          className="w-full text-left p-2 bg-white border border-red-200 text-red-600 rounded hover:bg-red-50"
+                        >
+                          Cancelar esta reserva
+                        </button>
+                      </>
+                    )
+                  ) : (
+                    // Different product options
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleReservationAction('replace')}
+                        className="w-full text-left p-2 bg-white border border-yellow-400 rounded hover:bg-yellow-50"
+                      >
+                        Reemplazar por este producto
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReservationAction('add')}
+                        className="w-full text-left p-2 bg-white border border-yellow-400 rounded hover:bg-yellow-50"
+                      >
+                        Agregar como nueva reserva
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex gap-4 pt-2">
             <button
@@ -451,7 +697,7 @@ Detalles:
               disabled={isSubmitting}
               className={`flex-1 py-3 px-4 rounded-lg font-medium text-white transition-all ${isSubmitting ? 'opacity-70 cursor-not-allowed' : 'hover:opacity-90'} ${theme === 'boy' ? 'bg-blue-600 hover:bg-blue-700' : theme === 'girl' ? 'bg-pink-600 hover:bg-pink-700' : 'bg-yellow-500 hover:bg-yellow-600'}`}
             >
-              {isSubmitting ? 'Reservando...' : 'Confirmar Reserva'}
+              {isSubmitting ? 'Procesando...' : showReservationOptions ? 'Continuar' : 'Confirmar Reserva'}
             </button>
           </div>
         </form>
