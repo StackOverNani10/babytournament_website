@@ -215,7 +215,7 @@ export const GallerySection = ({ theme }: GallerySectionProps) => {
           /* Gallery with photos */
           <>
             <div 
-              className="relative overflow-hidden rounded-xl shadow-lg"
+              className="relative overflow-hidden rounded-xl"
               onMouseEnter={pauseCarousel}
               onMouseLeave={resumeCarousel}
               onTouchStart={handleTouchStart}
@@ -226,9 +226,9 @@ export const GallerySection = ({ theme }: GallerySectionProps) => {
               <div 
                 className="relative w-full overflow-hidden rounded-xl"
                 style={{
-                  height: 'calc(100vw * 0.8)', // Tamaño para móviles
-                  maxHeight: '600px', // Altura máxima
-                  maxWidth: '900px', // Ancho máximo para computadoras
+                  height: 'calc(100vw * 0.8)', // Altura relativa a la pantalla
+                  maxHeight: '400px', // Altura máxima para pantallas grandes
+                  maxWidth: '600px', // Ancho máximo para computadoras
                   margin: '0 auto' // Centrar en pantallas grandes
                 }}
               >
