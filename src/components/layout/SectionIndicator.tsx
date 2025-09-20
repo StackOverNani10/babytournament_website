@@ -17,7 +17,8 @@ export const SectionIndicator = ({ sections, theme }: SectionIndicatorProps) => 
       'deseos': 'Mensajes',
       'sorteo': 'Sorteo',
       'votacion-actividades': 'Actividades',
-      'informacion': 'Información'
+      'informacion': 'Información',
+      'galeria': 'Galería'
     };
     return names[section] || section.charAt(0).toUpperCase() + section.slice(1);
   };

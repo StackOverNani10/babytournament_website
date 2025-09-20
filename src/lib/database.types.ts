@@ -14,7 +14,8 @@ type SectionType =
   | 'gift-catalog' 
   | 'activity-voting' 
   | 'raffle' 
-  | 'wishes';
+  | 'wishes'
+  | 'gallery';
 
 interface SectionConfig {
   id: SectionType;
