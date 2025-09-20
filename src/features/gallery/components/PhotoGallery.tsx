@@ -350,7 +350,6 @@ const PhotoGallery: React.FC = () => {
                       ))}
                     </div>
                     <p className="text-sm text-gray-600 text-center">
-// ...
                       {selectedFiles.length} {selectedFiles.length === 1 ? 'imagen seleccionada' : 'imágenes seleccionadas'}
                     </p>
                   </div>
