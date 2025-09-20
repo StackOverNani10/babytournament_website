@@ -8,7 +8,7 @@ import { Event, EventType } from '../../event/types/events';
 import { Product, Category, Store } from '../../gifts/types/products';
 import Layout from '../../../components/layout/Layout';
 import Button from '../../../components/ui/Button';
-import { BarChart3, Users, Gift, LogOut, TrendingUp, Filter, X } from 'lucide-react';
+import { BarChart3, Users, Gift, LogOut, TrendingUp, Filter, X, Image, Download, Eye, Trash2, Upload, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
@@ -192,7 +192,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
       return '';
     }
   };
-  type TabType = 'overview' | 'reservations' | 'predictions' | 'products' | 'events';
+  type TabType = 'overview' | 'reservations' | 'predictions' | 'products' | 'gallery' | 'events';
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [showFilter, setShowFilter] = useState(false);
   const [visiblePredictions, setVisiblePredictions] = useState(10);
@@ -315,6 +315,145 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   // State for data management
   const [categories, setCategories] = useState<Category[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
+  const [galleryImages, setGalleryImages] = useState<any[]>([]);
+  const [isLoadingImages, setIsLoadingImages] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<any>(null);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [imageToDelete, setImageToDelete] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Fetch gallery images with guest information
+  const fetchGalleryImages = async () => {
+    try {
+      setIsLoadingImages(true);
+      
+      // Get all photos without pagination for admin view
+      const { data: photos, error: photosError } = await supabase
+        .from('event_photos')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (photosError) throw photosError;
+
+      // Get all guests to match with uploaded_by emails
+      const { data: guests, error: guestsError } = await supabase
+        .from('guests')
+        .select('id, name, email');
+        
+      if (guestsError) throw guestsError;
+      
+      // Create a map of emails to guest names for quick lookup
+      const guestMap = new Map<string, string>();
+      guests?.forEach(guest => {
+        if (guest.email) {
+          guestMap.set(guest.email.toLowerCase(), guest.name);
+        }
+      });
+      
+      // Map the data to match the expected format
+      const formattedData = (photos || []).map(photo => {
+        const uploadedByEmail = photo.email || '';
+        const guestName = guestMap.get(uploadedByEmail.toLowerCase()) || 'Invitado';
+        
+        return {
+          id: photo.id,
+          name: guestName, // Usar el nombre del autor como nombre de la imagen
+          url: photo.url,
+          path: photo.url.split('/').pop() || '',
+          size: photo.file_size || 0, // Usar file_size de la base de datos (en bytes)
+          type: photo.mime_type || 'image/jpeg', // Usar mime_type de la base de datos
+          uploaded_by: uploadedByEmail,
+          uploaded_by_name: guestName,
+          created_at: photo.created_at,
+          description: photo.description || ''
+        };
+      });
+      
+      setGalleryImages(formattedData);
+    } catch (error) {
+      console.error('Error fetching gallery images:', error);
+      toast.error('Error al cargar las imágenes');
+    } finally {
+      setIsLoadingImages(false);
+    }
+  };
+
+  // Load gallery images on component mount
+  useEffect(() => {
+    if (activeTab === 'gallery') {
+      fetchGalleryImages();
+    }
+  }, [activeTab]);
+
+  // Handle image download
+  const handleDownloadImage = async (image: any) => {
+    try {
+      const response = await fetch(image.url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = image.name || 'imagen-descargada';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success('Descarga iniciada');
+    } catch (error) {
+      console.error('Error downloading image:', error);
+      toast.error('Error al descargar la imagen');
+    }
+  };
+
+  // Handle view image details
+  const handleViewImageDetails = (image: any) => {
+    setSelectedImage(image);
+    setIsViewerOpen(true);
+  };
+
+  // Handle delete image
+  const handleDeleteImage = async () => {
+    if (!imageToDelete) return;
+    
+    try {
+      // Delete from storage
+      const { error: storageError } = await supabase.storage
+        .from('event-photos')
+        .remove([imageToDelete.path]);
+
+      if (storageError) throw storageError;
+
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('event_photos')
+        .delete()
+        .eq('id', imageToDelete.id);
+
+      if (dbError) throw dbError;
+
+      // Update local state
+      setGalleryImages(prev => prev.filter(img => img.id !== imageToDelete.id));
+      toast.success('Imagen eliminada correctamente');
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      toast.error('Error al eliminar la imagen');
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setImageToDelete(null);
+      if (isViewerOpen) {
+        setIsViewerOpen(false);
+      }
+    }
+  };
+
+  // Filter images based on search term
+  const filteredImages = useMemo(() => {
+    if (!searchTerm) return galleryImages;
+    return galleryImages.filter(image => 
+      image.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [galleryImages, searchTerm]);
 
 
   // Fetch categories, stores, and events
@@ -480,10 +619,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
             <div className="flex flex-wrap gap-1 p-1 bg-slate-800 rounded-lg border border-slate-700">
               {[
                 { id: 'overview', label: 'Resumen', icon: BarChart3 },
-                { id: 'reservations', label: 'Reservas', icon: Users },
-                { id: 'predictions', label: 'Predicciones', icon: Gift },
+                { id: 'reservations', label: 'Regalos', icon: Gift },
+                { id: 'predictions', label: 'Predicciones', icon: TrendingUp },
                 { id: 'products', label: 'Productos', icon: Gift },
-                { id: 'events', label: 'Eventos', icon: TrendingUp }
+                { id: 'gallery', label: 'Galería', icon: Image },
+                { id: 'events', label: 'Eventos', icon: Users },
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -2333,6 +2473,223 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
               )}
             </div>
           )}
+
+          {/* Gallery Tab */}
+          {activeTab === 'gallery' && (
+            <div className="space-y-6">
+              <div className="space-y-3 sm:space-y-0">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="w-full sm:w-auto mb-4">
+                    <h2 className="text-xl font-bold text-white">Galería de Imágenes</h2>
+                    <p className="text-sm text-slate-400">Administra todas las imágenes subidas al sistema</p>
+                  </div>
+                </div>
+                <div className="relative w-full">
+                  <input
+                    type="text"
+                    placeholder="Buscar imágenes..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                </div>
+              </div>
+
+              {isLoadingImages ? (
+                <div className="flex justify-center items-center h-64">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                </div>
+              ) : (
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4">
+                  {filteredImages.length > 0 ? (
+                    <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                      {filteredImages.map((image) => (
+                        <div key={image.id} className="group relative aspect-square rounded-lg overflow-hidden bg-slate-800 border border-slate-700/50 hover:border-blue-500/50 transition-all duration-200">
+                          <img 
+                            src={image.url} 
+                            alt={image.name || 'Imagen'} 
+                            className="w-full h-full object-cover"
+                            onClick={() => handleViewImageDetails(image)}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-2 sm:p-3">
+                            <div className="text-white text-xs sm:text-sm font-medium truncate">
+                              <span className="text-slate-300 text-[10px] sm:text-xs">Subido por: </span>
+                              {image.name || 'Invitado'}
+                            </div>
+                            <div className="text-[10px] sm:text-xs text-slate-300 mt-0.5">
+                              {new Date(image.created_at).toLocaleDateString()}
+                            </div>
+                            <div className="flex justify-between sm:justify-end gap-1 sm:gap-2 mt-1.5 sm:mt-2">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDownloadImage(image);
+                                }}
+                                className="p-1.5 sm:p-1.5 rounded-full bg-slate-700/80 hover:bg-slate-600/80 text-white transition-colors flex-shrink-0"
+                                title="Descargar"
+                              >
+                                <Download size={14} className="sm:w-4 sm:h-4 w-3.5 h-3.5" />
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewImageDetails(image);
+                                }}
+                                className="p-1.5 sm:p-1.5 rounded-full bg-slate-700/80 hover:bg-slate-600/80 text-white transition-colors flex-shrink-0"
+                                title="Ver detalles"
+                              >
+                                <Eye size={14} className="sm:w-4 sm:h-4 w-3.5 h-3.5" />
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setImageToDelete(image);
+                                  setIsDeleteDialogOpen(true);
+                                }}
+                                className="p-1.5 sm:p-1.5 rounded-full bg-red-600/80 hover:bg-red-500/80 text-white transition-colors flex-shrink-0"
+                                title="Eliminar"
+                              >
+                                <Trash2 size={14} className="sm:w-4 sm:h-4 w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full bg-slate-800/50 mb-4">
+                        <Image className="h-8 w-8 text-slate-600" />
+                      </div>
+                      <h3 className="text-lg font-medium text-white">No hay imágenes</h3>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Image Detail Modal */}
+              {isViewerOpen && selectedImage && (
+                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setIsViewerOpen(false)}>
+                  <div className="relative max-w-4xl w-full max-h-[90vh] bg-slate-800 rounded-xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <button 
+                      onClick={() => setIsViewerOpen(false)}
+                      className="absolute top-4 right-4 z-10 p-2 bg-slate-900/80 rounded-full text-white hover:bg-slate-800 transition-colors"
+                    >
+                      <X size={20} />
+                    </button>
+                    <div className="relative flex-1 min-h-0 flex flex-col">
+                      <div className="flex-1 min-h-0 overflow-auto p-4">
+                        <div className="w-full h-full flex items-center justify-center">
+                          <img 
+                            src={selectedImage.url} 
+                            alt={selectedImage.name || 'Imagen'} 
+                            className="max-w-full max-h-full object-contain"
+                            style={{
+                              maxHeight: 'calc(70vh - 80px)', // Restar espacio del encabezado y pie
+                              maxWidth: '100%',
+                              cursor: 'zoom-in',
+                              transition: 'transform 0.2s ease-in-out'
+                            }}
+                            onClick={(e) => {
+                              const img = e.currentTarget;
+                              img.style.transform = img.style.transform === 'scale(1.5)' ? 'scale(1)' : 'scale(1.5)';
+                              img.style.cursor = img.style.transform === 'scale(1.5)' ? 'zoom-out' : 'zoom-in';
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="text-xs text-center text-slate-500 p-2 border-t border-slate-700">
+                        Haz clic en la imagen para hacer zoom
+                      </div>
+                    </div>
+                    <div className="p-4 border-t border-slate-700 bg-slate-800">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+                        <div className="min-w-0">
+                          <h3 className="font-medium text-white truncate">Subido por: {selectedImage.name || 'Invitado'}</h3>
+                          {selectedImage.description && (
+                            <p 
+                              className="text-sm text-slate-300 mt-1 break-words overflow-hidden"
+                              style={{
+                                wordBreak: 'break-word',
+                                maxWidth: '100%',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 10,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                              }}
+                            >
+                              {selectedImage.description}
+                            </p>
+                          )}
+                          <div className="text-sm text-slate-400 mt-2">
+                            <div className="truncate">Subido el {new Date(selectedImage.created_at).toLocaleDateString()}</div>
+                            <div className="text-xs text-slate-500 mt-1 truncate">
+                              Tamaño: {selectedImage.size > 0 
+                                ? selectedImage.size >= 1024 * 1024 
+                                  ? (selectedImage.size / (1024 * 1024)).toFixed(1) + ' MB' 
+                                  : (selectedImage.size / 1024).toFixed(1) + ' KB'
+                                : 'Desconocido'
+                              } • {selectedImage.type}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button 
+                            onClick={() => handleDownloadImage(selectedImage)}
+                            className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors flex-shrink-0"
+                            title="Descargar"
+                          >
+                            <Download size={18} />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setImageToDelete(selectedImage);
+                              setIsDeleteDialogOpen(true);
+                            }}
+                            className="p-2 bg-red-600 hover:bg-red-500 rounded-lg text-white transition-colors flex-shrink-0"
+                            title="Eliminar"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Delete Confirmation Dialog */}
+          <div className={`fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 transition-opacity duration-200 ${isDeleteDialogOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <div className={`bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4 transform transition-all duration-200 ${isDeleteDialogOpen ? 'translate-y-0' : 'translate-y-4'}`}>
+              <div className="text-center">
+                <Trash2 size={48} className="mx-auto text-red-500 mb-4" />
+                <h3 className="text-xl font-bold text-white mb-2">¿Eliminar imagen?</h3>
+                <p className="text-slate-400 mb-6">Esta acción no se puede deshacer. La imagen se eliminará permanentemente.</p>
+                
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button
+                    onClick={() => {
+                      setIsDeleteDialogOpen(false);
+                      setImageToDelete(null);
+                    }}
+                    className="px-6 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors flex-1 sm:flex-none"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDeleteImage}
+                    className="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors flex-1 sm:flex-none"
+                  >
+                    Sí, eliminar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </Layout>
