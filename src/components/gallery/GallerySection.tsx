@@ -178,7 +178,7 @@ export const GallerySection = ({ theme }: GallerySectionProps) => {
                 <Button
                   onClick={handleUploadClick}
                   disabled={isUploading}
-                  className={buttonClass}
+                  className={`inline-flex items-center text-white bg-${theme === 'boy' ? 'blue' : theme === 'girl' ? 'pink' : 'amber'}-500 hover:bg-${theme === 'boy' ? 'blue' : theme === 'girl' ? 'pink' : 'amber'}-600 px-6 py-2 rounded-full text-base font-medium shadow-lg hover:shadow-xl transition-all duration-200`}
                 >
                   {isUploading ? (
                     <>
@@ -201,9 +201,9 @@ export const GallerySection = ({ theme }: GallerySectionProps) => {
                 <Button
                   variant="outline"
                   onClick={() => navigate('/gallery')}
-                  className="inline-flex items-center text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 px-6 py-2 rounded-full text-base font-medium shadow-sm hover:shadow transition-all duration-200"
+                  className={`inline-flex items-center text-gray-700 bg-white border-2 border-gray-200 hover:border-${theme === 'boy' ? 'blue' : theme === 'girl' ? 'pink' : 'amber'}-500 hover:bg-${theme === 'boy' ? 'blue' : theme === 'girl' ? 'pink' : 'amber'}-50 px-6 py-2 rounded-full text-base font-medium shadow-sm hover:shadow transition-all duration-200`}
                 >
-                  Ver galería completa
+                  Ir a la galería
                   <svg className="ml-2 -mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
                   </svg>
