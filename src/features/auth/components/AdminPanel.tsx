@@ -1,8 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEvents } from '../../../context/events/EventsContext';
 import { useReservations } from '../../../context/reservations/ReservationsContext';
 import { useApp } from '../../../context/AppContext';
+import * as XLSX from 'xlsx';
+// Importación correcta de jsPDF y autoTable
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+declare module 'jspdf' {
+  interface jsPDF {
+    autoTable: (options: any) => jsPDF;
+  }
+}
 import { usePredictions } from '../../../context/predictions/PredictionsContext';
 import { Event, EventType } from '../../event/types/events';
 import { Product, Category, Store } from '../../gifts/types/products';
@@ -84,6 +94,8 @@ interface AdminPanelProps {
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
+  // Referencia para el input de búsqueda
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const {
     events,
     updateEvent,
@@ -285,6 +297,259 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   // Filter out cancelled reservations
   const activeReservations = reservations?.filter(r => r.status !== 'cancelled') || [];
 
+  // Filtrar predicciones según los filtros actuales
+  const filteredPredictions = useMemo(() => {
+    return predictions.filter(prediction => 
+      (genderFilter === 'all' || 
+       (genderFilter === 'boy' && prediction.prediction === 'boy') || 
+       (genderFilter === 'girl' && prediction.prediction === 'girl')) &&
+      (filters.search === '' || 
+       (prediction.guest_name && prediction.guest_name.toLowerCase().includes(filters.search.toLowerCase())) ||
+       (prediction.name_suggestion && prediction.name_suggestion.toLowerCase().includes(filters.search.toLowerCase())) ||
+       (prediction.message && prediction.message.toLowerCase().includes(filters.search.toLowerCase())))
+    );
+  }, [predictions, genderFilter, filters.search]);
+
+  // Función para exportar a Excel
+  const exportToExcel = () => {
+    try {
+      // Preparar los datos para la exportación
+      const dataForExport = filteredPredictions.map(prediction => ({
+        'Nombre del invitado': prediction.guest_name || prediction.guest?.name || 'Invitado',
+        'Género': prediction.prediction === 'boy' ? 'Niño 👶' : 'Niña 👧',
+        'Nombre sugerido': prediction.name_suggestion || 'Sin nombre sugerido',
+        'Mensaje': prediction.message || '',
+        'Fecha': prediction.created_at ? new Date(prediction.created_at).toLocaleString('es-ES') : 'Sin fecha',
+        'Contacto': prediction.guest?.email || prediction.guest?.phone || 'No disponible'
+      }));
+
+      // Crear un nuevo libro de trabajo y hoja de cálculo
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(dataForExport);
+      
+      // Ajustar el ancho de las columnas
+      const wscols = [
+        {wch: 25}, // Nombre del invitado
+        {wch: 15}, // Género
+        {wch: 25}, // Nombre sugerido
+        {wch: 50}, // Mensaje
+        {wch: 20}, // Fecha
+        {wch: 30}  // Contacto
+      ];
+      ws['!cols'] = wscols;
+      
+      // Agregar estilo a los encabezados
+      const headerStyle = {
+        font: { bold: true, color: { rgb: 'FFFFFF' } },
+        fill: { fgColor: { rgb: '2D3748' } }, // Color de fondo gris oscuro
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: '1A202C' } },
+          bottom: { style: 'thin', color: { rgb: '1A202C' } },
+          left: { style: 'thin', color: { rgb: '1A202C' } },
+          right: { style: 'thin', color: { rgb: '1A202C' } }
+        }
+      };
+      
+      // Aplicar estilo a los encabezados
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cell_address = { c: C, r: 0 };
+        const cell_ref = XLSX.utils.encode_cell(cell_address);
+        if (!ws[cell_ref]) continue;
+        
+        // Aplicar estilo
+        ws[cell_ref].s = headerStyle;
+      }
+      
+      // Habilitar filtros en la primera fila
+      if (!ws['!autofilter'] && ws['!ref']) {
+        ws['!autofilter'] = { ref: ws['!ref'] };
+      }
+      
+      // Agregar la hoja al libro
+      XLSX.utils.book_append_sheet(wb, ws, 'Predicciones');
+      
+      // Generar el archivo Excel
+      XLSX.writeFile(wb, `predicciones-${new Date().toISOString().split('T')[0]}.xlsx`, {
+        bookSST: true,  // Habilita el uso de cadenas compartidas
+        type: 'array'
+      });
+      
+    } catch (error) {
+      console.error('Error al exportar a Excel:', error);
+      toast.error('Ocurrió un error al exportar a Excel');
+    }
+  };
+
+  // Función para exportar el marco dividido de nombres en columnas paralelas
+  const exportToFramePDF = () => {
+    try {
+      // Crear un nuevo documento PDF horizontal para mejor distribución
+      const doc = new jsPDF('l', 'mm', 'a4');
+      
+      // Título del documento
+      const title = 'Sugerencias de Nombres';
+      const date = new Date().toLocaleDateString('es-ES');
+      
+      // Dividir las predicciones por género
+      const boyNames = filteredPredictions
+        .filter((p: any) => p.prediction === 'boy' && p.name_suggestion)
+        .map((p: any) => p.name_suggestion);
+      
+      const girlNames = filteredPredictions
+        .filter((p: any) => p.prediction === 'girl' && p.name_suggestion)
+        .map((p: any) => p.name_suggestion);
+      
+      // Eliminar duplicados y ordenar alfabéticamente
+      const uniqueBoyNames = [...new Set(boyNames)].sort() as string[];
+      const uniqueGirlNames = [...new Set(girlNames)].sort() as string[];
+      
+      // Configuración de la página
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 15;
+      const colWidth = (pageWidth - (margin * 3)) / 2;
+      
+      // Estilo para los títulos
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      
+      // Título principal
+      doc.setFontSize(18);
+      doc.text(title, margin, 20);
+      
+      // Fecha de generación
+      doc.setFontSize(10);
+      doc.text(`Generado el: ${date}`, margin, 27);
+      
+      // Posición inicial para las columnas
+      const startY = 40;
+      const rightColumnX = margin + colWidth + margin;
+      
+      // Función para dibujar una columna de nombres
+      const drawNames = (title: string, startX: number, startY: number, names: string[]) => {
+        // Título de la columna en negrita
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text(title, startX, startY);
+        
+        // Línea divisora
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.5);
+        doc.line(startX, startY + 2, startX + colWidth, startY + 2);
+        
+        // Contador en negrita
+        doc.setFontSize(10);
+        doc.text(`Total: ${names.length} nombres`, startX, startY + 8);
+        
+        // Lista de nombres
+        let currentY = startY + 16;
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        
+        names.forEach((name, index) => {
+          doc.text(`${index + 1}. ${name}`, startX, currentY);
+          currentY += 6; // Espacio entre líneas
+        });
+      };
+      
+      // Dibujar columnas paralelas
+      drawNames('Niño', margin, startY, uniqueBoyNames);
+      drawNames('Niña', rightColumnX, startY, uniqueGirlNames);
+      
+      // Guardar el PDF
+      doc.save(`marco-nombres-${new Date().toISOString().split('T')[0]}.pdf`);
+      
+    } catch (error) {
+      console.error('Error al generar el marco de nombres:', error);
+      toast.error('Ocurrió un error al generar el marco de nombres');
+    }
+  };
+
+  // Función para exportar a PDF
+  const exportToPDF = () => {
+    try {
+      // Crear un nuevo documento PDF
+      const doc = new jsPDF('landscape');
+      
+      // Título del documento
+      const title = 'Reporte de Predicciones';
+      const date = new Date().toLocaleDateString('es-ES');
+      
+      // Configuración de la tabla
+      const headers = ['Nombre del invitado', 'Género', 'Nombre sugerido', 'Mensaje', 'Fecha', 'Contacto'];
+      
+      // Función para limpiar texto de emojis para el PDF
+      const cleanTextForPDF = (text: string) => {
+        // Reemplazar emojis comunes con texto descriptivo
+        return text
+          .replace(/👶/g, '[Niño]')
+          .replace(/👧/g, '[Niña]')
+          .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+          .trim();
+      };
+
+      const data = filteredPredictions.map(prediction => [
+        cleanTextForPDF(prediction.guest_name || prediction.guest?.name || 'Invitado'),
+        prediction.prediction === 'boy' ? 'Niño' : 'Niña',
+        cleanTextForPDF(prediction.name_suggestion || 'Sin nombre sugerido'),
+        cleanTextForPDF(prediction.message || ''),
+        prediction.created_at ? new Date(prediction.created_at).toLocaleString('es-ES') : 'Sin fecha',
+        cleanTextForPDF(prediction.guest?.email || prediction.guest?.phone || 'No disponible')
+      ]);
+      
+      // Agregar título y fecha
+      doc.setFontSize(18);
+      doc.text(title, 14, 20);
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Generado el: ${date}`, 14, 27);
+      
+      // Configuración de la tabla
+      autoTable(doc, {
+        head: [headers],
+        body: data,
+        startY: 35, // Ajustar según sea necesario para dejar espacio para el título
+        theme: 'grid',
+        headStyles: {
+          fillColor: [41, 41, 41],
+          textColor: 255,
+          fontStyle: 'bold',
+          halign: 'center'
+        },
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: 'linebreak',
+          lineWidth: 0.1,
+          textColor: [0, 0, 0]
+        },
+        columnStyles: {
+          0: { cellWidth: 40, halign: 'left' },
+          1: { cellWidth: 20, halign: 'center' },
+          2: { cellWidth: 40, halign: 'left' },
+          3: { cellWidth: 60, halign: 'left' },
+          4: { cellWidth: 30, halign: 'center' },
+          5: { cellWidth: 50, halign: 'left' }
+        },
+        margin: { top: 40 },
+        didDrawPage: function(data) {
+          // Agregar número de página
+          const pageSize = doc.internal.pageSize;
+          const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+          doc.text(`Página ${doc.getNumberOfPages()}`, data.settings.margin.left, pageHeight - 10);
+        }
+      });
+      
+      // Guardar el PDF
+      doc.save(`predicciones-${new Date().toISOString().split('T')[0]}.pdf`);
+      
+    } catch (error) {
+      console.error('Error al generar el PDF:', error);
+      toast.error('Ocurrió un error al generar el PDF');
+    }
+  };
+
   // Calculate statistics
   const stats = {
     totalProducts: products?.length || 0,
@@ -322,6 +587,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [imageToDelete, setImageToDelete] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+
+  // Cerrar el menú desplegable al hacer clic fuera de él
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (exportDropdownOpen && !target.closest('.export-dropdown')) {
+        setExportDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [exportDropdownOpen]);
 
   // Fetch gallery images with guest information
   const fetchGalleryImages = async () => {
@@ -957,12 +1238,107 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
           {/* Predictions Tab */}
           {activeTab === 'predictions' && (
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
-                <div>
+              <div className="space-y-4">
+                {/* Header con título, botón de exportar y contador */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                   <h4 className="text-xl font-semibold text-white">
                     Predicciones y Nombres
                   </h4>
-                  <div className="flex items-center gap-2 mt-2">
+                  
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-slate-400 whitespace-nowrap">
+                      {filteredPredictions.length} {genderFilter === 'all' ? 'en total' : genderFilter === 'boy' ? 'niños' : 'niñas'}
+                    </span>
+                    
+                    <div className="relative export-dropdown">
+                      <button
+                        onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
+                        title="Exportar datos"
+                        aria-haspopup="true"
+                        aria-expanded={exportDropdownOpen}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                          <polyline points="7 10 12 15 17 10"></polyline>
+                          <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        <span className="whitespace-nowrap">Exportar</span>
+                        <svg 
+                          className={`w-2.5 h-2.5 ml-1 transition-transform duration-200 ${exportDropdownOpen ? 'transform rotate-180' : ''}`} 
+                          aria-hidden="true" 
+                          xmlns="http://www.w3.org/2000/svg" 
+                          fill="none" 
+                          viewBox="0 0 10 6"
+                        >
+                          <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m1 1 4 4 4-4"/>
+                        </svg>
+                      </button>
+                      
+                      {/* Dropdown menu */}
+                      {exportDropdownOpen && (
+                        <div className="absolute right-0 z-20 mt-1 w-48 bg-slate-800 rounded-lg shadow-xl border border-slate-700 overflow-hidden animate-fadeIn">
+                          <ul className="py-1 text-sm text-gray-200 divide-y divide-slate-700">
+                            <li>
+                              <button
+                                onClick={() => {
+                                  exportToExcel();
+                                  setExportDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-4 py-2.5 hover:bg-slate-700/80 flex items-center gap-2.5 transition-colors duration-150"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                  <polyline points="7 10 12 15 17 10"></polyline>
+                                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                                </svg>
+                                <span>Exportar a Excel</span>
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                onClick={() => {
+                                  exportToPDF();
+                                  setExportDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-4 py-2.5 hover:bg-slate-700/80 flex items-center gap-2.5 transition-colors duration-150"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+                                  <polyline points="14 2 14 8 20 8"></polyline>
+                                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                                  <polyline points="10 9 8 9 8 13"></polyline>
+                                </svg>
+                                <span>Exportar a PDF</span>
+                              </button>
+                            </li>
+                            <li className="border-t border-slate-700">
+                              <button
+                                onClick={() => {
+                                  exportToFramePDF();
+                                  setExportDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-4 py-2.5 hover:bg-slate-700/80 flex items-center gap-2.5 transition-colors duration-150"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                  <line x1="3" y1="9" x2="21" y2="9"></line>
+                                  <line x1="9" y1="21" x2="9" y2="9"></line>
+                                </svg>
+                                <span>Exportar Marco</span>
+                              </button>
+                            </li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Filtros y búsqueda */}
+                <div className="flex flex-col sm:flex-row gap-3 w-full">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       onClick={() => setGenderFilter('all')}
                       className={`px-3 py-1 text-sm rounded-full ${genderFilter === 'all' 
@@ -988,30 +1364,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                       👧 Niña
                     </button>
                   </div>
+                  <div className="relative flex-1 max-w-md">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Search className="h-4 w-4 text-slate-400" />
+                    </div>
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      placeholder="Buscar predicciones..."
+                      className="block w-full pl-10 pr-3 py-1.5 border border-slate-600 rounded-lg bg-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      value={filters.search}
+                      onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                    />
+                    {filters.search && (
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        onClick={() => setFilters({ ...filters, search: '' })}
+                      >
+                        <X className="h-4 w-4 text-slate-400 hover:text-white" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <span className="text-sm text-slate-400">
-                  {predictions.filter(p => 
-                    genderFilter === 'all' || 
-                    (genderFilter === 'boy' && p.prediction === 'boy') || 
-                    (genderFilter === 'girl' && p.prediction === 'girl')
-                  ).length} {genderFilter === 'all' ? 'en total' : genderFilter === 'boy' ? 'niños' : 'niñas'}
-                </span>
               </div>
 
-              {predictions.length === 0 ? (
+              {filteredPredictions.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 bg-slate-800/50 rounded-lg">
                   No hay predicciones aún
                 </div>
               ) : (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {predictions
-                    .filter(prediction => 
-                      genderFilter === 'all' || 
-                      (genderFilter === 'boy' && prediction.prediction === 'boy') || 
-                      (genderFilter === 'girl' && prediction.prediction === 'girl')
-                    )
-                    .slice(0, visiblePredictions)
+                    {filteredPredictions
+                      .slice(0, visiblePredictions)
                     .map((prediction: any) => {
                       const guestName = prediction.guest_name || prediction.guest?.name || 'Invitado';
                       const isBoy = prediction.prediction === 'boy';
@@ -1072,11 +1458,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout }) => {
                     })}
                   </div>
 
-                  {predictions.filter(p => 
-                    genderFilter === 'all' || 
-                    (genderFilter === 'boy' && p.prediction === 'boy') || 
-                    (genderFilter === 'girl' && p.prediction === 'girl')
-                  ).length > visiblePredictions && (
+                  {filteredPredictions.length > visiblePredictions && (
                     <div className="mt-4 text-center">
                       <button
                         onClick={() => setVisiblePredictions(prev => prev + 10)}
