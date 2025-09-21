@@ -6,7 +6,8 @@ export type SectionType =
   | 'gift-catalog' 
   | 'activity-voting' 
   | 'raffle' 
-  | 'wishes';
+  | 'wishes'
+  | 'gallery';
 
 export interface SectionConfig {
   id: SectionType;

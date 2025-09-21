@@ -1,7 +1,8 @@
 import React from 'react';
-import { Calendar, MapPin, Clock, Share2 } from 'lucide-react';
+import { Calendar, MapPin, Clock, Share2, Image, User } from 'lucide-react';
 import { Event } from '../../../types';
 import Button from '../../../components/ui/Button';
+import { useNavigate } from 'react-router-dom';
 
 interface EventHeaderProps {
   event: Event;
@@ -9,6 +10,8 @@ interface EventHeaderProps {
 }
 
 const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) => {
+  const navigate = useNavigate();
+  const isAdmin = localStorage.getItem('adminAuthenticated') === 'true';
   
   const getButtonColors = () => {
     switch (theme) {
@@ -44,7 +47,17 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
   
   const buttonColors = getButtonColors();
   
-  // Eliminamos las variables de predicciones ya que se movieron a App.tsx
+  const navigateToGallery = () => {
+    navigate('/gallery');
+  };
+
+  const navigateToAdmin = () => {
+    if (isAdmin) {
+      navigate('/admin');
+    } else {
+      navigate('/login');
+    }
+  };
   
   const formatDate = (dateString: string) => {
     // Add timezone offset to handle dates correctly
@@ -126,6 +139,21 @@ const EventHeader: React.FC<EventHeaderProps> = ({ event, theme = 'neutral' }) =
     <div className={`relative overflow-hidden mb-1 rounded-2xl bg-white border border-gray-100 transition-all duration-300 ${getShadowColor()} hover:shadow-xl hover:-translate-y-0.5`}>
       {/* Gradient Header */}
       <div className={`h-2 w-full bg-gradient-to-r ${getEventTypeColor()}`}></div>
+      
+      {/* Admin Button */}
+      {isAdmin && (
+        <div className="absolute top-4 right-4 z-10">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            className={`${buttonColors.ghost} ${buttonColors.iconHover} rounded-full p-2`}
+            onClick={navigateToAdmin}
+            aria-label="Panel de administración"
+          >
+            <User className="h-5 w-5" />
+          </Button>
+        </div>
+      )}
       
       {/* Decorative Elements */}
       <div className="absolute inset-0 overflow-hidden">

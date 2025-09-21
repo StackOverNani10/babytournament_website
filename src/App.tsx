@@ -8,6 +8,7 @@ import { ReservationsProvider } from './context/reservations/ReservationsContext
 import { PredictionsProvider } from './context/predictions/PredictionsContext';
 import { GuestsProvider } from './context/guests/GuestsContext';
 import { AuthProvider } from './context/auth/AuthContext';
+import { GalleryProvider } from './context/gallery/GalleryContext';
 import Layout from './components/layout/Layout';
 import Footer from './components/layout/Footer';
 import ScrollIndicator from './components/layout/ScrollIndicator';
@@ -22,6 +23,8 @@ import GenderSwitcher from './features/activity/components/GenderSwitcher';
 import Raffle from './features/raffle/components/Raffle';
 import Wishes from './features/wishes/components/Wishes';
 import PredictionModal from './features/predictions/components/PredictionModal';
+import GalleryPage from './features/gallery/pages/GalleryPage';
+import { GallerySection } from '@/components/gallery/GallerySection';
 
 // Auth components
 import AdminPanel from './features/auth/components/AdminPanel';
@@ -36,7 +39,11 @@ import Alert from './components/ui/Alert';
 
 // Mover HomePage fuera del componente App para evitar re-renderizados innecesarios
 const HomePageContent: React.FC = () => {
+  const navigate = useNavigate();
   const { currentEvent, selectedTheme, setSelectedTheme: originalSetSelectedTheme } = useApp();
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
+    return localStorage.getItem('adminAuthenticated') === 'true';
+  });
   const { predictions } = usePredictions();
   const [showPredictionModal, setShowPredictionModal] = useState(false);
   const predictionsRef = useRef<HTMLDivElement>(null);
@@ -72,8 +79,6 @@ const HomePageContent: React.FC = () => {
     originalSetSelectedTheme(theme);
   };
 
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-
   const handlePredictionClick = () => {
     if (selectedTheme === 'neutral') {
       toast.info('¡Primero elige si crees que será niño o niña! 😊');
@@ -83,12 +88,23 @@ const HomePageContent: React.FC = () => {
   };
 
   const handleAdminLogin = () => {
+    const wasAuthenticated = isAdminAuthenticated;
     setIsAdminAuthenticated(true);
     localStorage.setItem('adminAuthenticated', 'true');
+    
+    // Redirigir al panel de administración solo si no estaba autenticado previamente
+    if (!wasAuthenticated) {
+      navigate('/admin');
+    }
   };
-
+  
   // Función para desplazamiento suave
   const scrollToSection = (id: string) => {
+    if (id === 'gallery') {
+      navigate('/gallery');
+      return;
+    }
+    
     const element = document.getElementById(id);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
@@ -104,6 +120,21 @@ const HomePageContent: React.FC = () => {
   const enabledSections = Object.values(currentEvent.sections || {})
     .filter(section => section.enabled)
     .sort((a, b) => a.order - b.order);
+    
+  // Add gallery section to enabled sections if not already there
+  if (!enabledSections.some(s => s.id === 'gallery')) {
+    enabledSections.push({
+      id: 'gallery',
+      title: 'Galería de Fotos',
+      description: 'Comparte y disfruta de los momentos especiales del evento',
+      enabled: true,
+      order: 4, // After countdown, predictions, and wishes
+      config: {
+        icon: 'camera',
+        showInNav: true
+      }
+    });
+  }
 
   // Map section IDs for the indicator (excluding countdown from indicator but still showing it)
   const sectionIds = enabledSections.map(section => {
@@ -115,6 +146,7 @@ const HomePageContent: React.FC = () => {
       case 'activity-voting': return 'votacion-actividades';
       case 'raffle': return 'sorteo';
       case 'gift-catalog': return 'regalos';
+      case 'gallery': return 'galeria';
       default: return section.id;
     }
   }).filter(Boolean) as string[]; // Remove nulls and ensure string[] type
@@ -230,6 +262,8 @@ const HomePageContent: React.FC = () => {
                   </div>
                 );
                 
+              case 'gallery':
+                return <GallerySection key="galeria" theme={selectedTheme} />;
               case 'activity-voting':
                 return (
                   <div key="votacion-actividades" id="votacion-actividades" className="mb-16">
@@ -281,7 +315,7 @@ function App() {
   const navigate = useNavigate();
   
   const handleLogout = () => {
-    // This will redirect to the login page
+    localStorage.removeItem('adminAuthenticated');
     navigate('/login');
   };
 
@@ -292,9 +326,15 @@ function App() {
           <ReservationsProvider>
             <PredictionsProvider>
               <GuestsProvider>
-                <Toaster position="top-center" richColors closeButton />
+                <GalleryProvider>
+                  <Toaster position="top-center" richColors closeButton />
                 <Routes>
                   <Route path="/" element={<HomePage />} />
+                  <Route path="/gallery" element={
+                    <Layout>
+                      <GalleryPage />
+                    </Layout>
+                  } />
                   <Route 
                     path="/admin/*" 
                     element={
@@ -305,7 +345,8 @@ function App() {
                   />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+                  </Routes>
+                </GalleryProvider>
               </GuestsProvider>
             </PredictionsProvider>
           </ReservationsProvider>
@@ -333,7 +374,5 @@ function LoginPage() {
     </div>
   );
 }
-
-// Unauthorized access page
 
 export default App;
