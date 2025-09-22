@@ -143,37 +143,79 @@ const PhotoGallery: React.FC = () => {
 
   // Función para manejar la descarga de imágenes
   const handleDownload = async (imageUrl: string, event: React.MouseEvent | React.TouchEvent) => {
+    // Prevenir comportamiento por defecto y propagación
     event.preventDefault();
-    event.stopPropagation(); // Prevenir que se abra el modal al hacer clic en el botón de descarga
+    event.stopPropagation();
+    
+    // Mostrar feedback inmediato
+    toast.loading('Preparando descarga...', { id: 'download-toast' });
     
     try {
-      // Obtener la imagen
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      
       // Crear un enlace temporal
-      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       
-      // Generar un nombre de archivo único
-      const fileName = `foto-${Date.now()}.jpg`;
+      // En móviles, abrir en nueva pestaña para forzar la descarga
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       
-      // Configurar el enlace
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
+      if (isMobile) {
+        // Para móviles, forzar la descarga con atributo download
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
+        link.href = url;
+        link.download = `foto-${Date.now()}.jpg`;
+        link.target = '_blank';
+        
+        // Añadir estilos para hacer el enlace invisible
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        
+        // Disparar el evento de clic
+        const clickEvent = new MouseEvent('click', {
+          view: window,
+          bubbles: true,
+          cancelable: true
+        });
+        
+        link.dispatchEvent(clickEvent);
+        
+        // Limpiar después de un tiempo
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(link);
+        }, 100);
+      } else {
+        // Para escritorio, comportamiento normal
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        
+        link.href = url;
+        link.download = `foto-${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        
+        // Limpiar
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+      }
       
-      // Simular clic para iniciar la descarga
-      link.click();
-      
-      // Limpiar
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(link);
-      
-      toast.success('Descarga iniciada');
+      // Mostrar mensaje de éxito
+      toast.success('Descarga iniciada', { id: 'download-toast' });
     } catch (error) {
       console.error('Error al descargar la imagen:', error);
-      toast.error('Error al descargar la imagen');
+      toast.error('Error al descargar la imagen', { id: 'download-toast' });
+      
+      // Si falla, ofrecer alternativa de abrir en nueva pestaña
+      toast.info('¿No se descargó? Toca aquí para intentar de otra manera', {
+        id: 'download-fallback',
+        action: {
+          label: 'Abrir',
+          onClick: () => window.open(imageUrl, '_blank')
+        },
+        duration: 10000
+      });
     }
   };
 
@@ -520,20 +562,28 @@ const PhotoGallery: React.FC = () => {
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
                 
-                {/* Botón de descarga fijo en esquina superior derecha */}
-                <button 
-                  onClick={(e) => handleDownload(photo.url, e)}
-                  className="absolute top-2 right-2 p-2 bg-white/90 rounded-full shadow-md hover:bg-white transition-all duration-200 
-                    opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none
-                    active:scale-90 hover:scale-110 focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/40"
-                  aria-label="Descargar imagen"
+                {/* Botón de descarga - versión para móvil y escritorio */}
+                <div 
+                  className="absolute top-2 right-2"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <Download className="w-4 h-4 text-gray-800" />
-                </button>
-                
-                {/* Indicador móvil - solo se muestra en móviles */}
-                <div className="md:hidden absolute top-2 right-2 p-1.5 bg-white/90 rounded-full shadow-md">
-                  <Download className="w-3.5 h-3.5 text-gray-700" />
+                  <button 
+                    onClick={(e) => handleDownload(photo.url, e)}
+                    onTouchStart={(e) => {
+                      // Prevenir el zoom en dispositivos táctiles
+                      e.preventDefault();
+                      e.currentTarget.classList.add('scale-90');
+                    }}
+                    onTouchEnd={(e) => {
+                      e.currentTarget.classList.remove('scale-90');
+                    }}
+                    className="p-2.5 bg-white/90 rounded-full shadow-md transition-all duration-200 
+                      md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 focus:outline-none
+                      active:scale-90 hover:scale-110 focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/40"
+                    aria-label="Descargar imagen"
+                  >
+                    <Download className="w-4 h-4 text-gray-800" />
+                  </button>
                 </div>
                 {photo.description && (
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-3">
