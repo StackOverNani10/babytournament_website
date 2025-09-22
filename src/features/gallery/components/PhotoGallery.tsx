@@ -141,10 +141,47 @@ const PhotoGallery: React.FC = () => {
     setPhotoToDelete(null);
   };
 
-  // Función handleDownload eliminada por no estar en uso
+  // Función para manejar la descarga de imágenes
+  const handleDownload = async (imageUrl: string, event: React.MouseEvent | React.TouchEvent) => {
+    event.preventDefault();
+    event.stopPropagation(); // Prevenir que se abra el modal al hacer clic en el botón de descarga
+    
+    try {
+      // Obtener la imagen
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      
+      // Crear un enlace temporal
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      
+      // Generar un nombre de archivo único
+      const fileName = `foto-${Date.now()}.jpg`;
+      
+      // Configurar el enlace
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      
+      // Simular clic para iniciar la descarga
+      link.click();
+      
+      // Limpiar
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(link);
+      
+      toast.success('Descarga iniciada');
+    } catch (error) {
+      console.error('Error al descargar la imagen:', error);
+      toast.error('Error al descargar la imagen');
+    }
+  };
 
   const openImageModal = (url: string) => {
-    setSelectedImage(url);
+    // Pequeño retraso para permitir que el evento de toque se complete
+    setTimeout(() => {
+      setSelectedImage(url);
+    }, 100);
   };
 
   const closeImageModal = () => {
@@ -474,15 +511,30 @@ const PhotoGallery: React.FC = () => {
               {photos.map((photo) => (
               <div 
                 key={photo.id} 
-                className="group relative aspect-square overflow-hidden rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+                className="group relative aspect-square overflow-hidden rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                 onClick={() => openImageModal(photo.url)}
               >
                 <img
                   src={photo.url}
                   alt={photo.description || 'Foto del evento'}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
-                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-200"></div>
+                
+                {/* Botón de descarga fijo en esquina superior derecha */}
+                <button 
+                  onClick={(e) => handleDownload(photo.url, e)}
+                  className="absolute top-2 right-2 p-2 bg-white/90 rounded-full shadow-md hover:bg-white transition-all duration-200 
+                    opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none
+                    active:scale-90 hover:scale-110 focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/40"
+                  aria-label="Descargar imagen"
+                >
+                  <Download className="w-4 h-4 text-gray-800" />
+                </button>
+                
+                {/* Indicador móvil - solo se muestra en móviles */}
+                <div className="md:hidden absolute top-2 right-2 p-1.5 bg-white/90 rounded-full shadow-md">
+                  <Download className="w-3.5 h-3.5 text-gray-700" />
+                </div>
                 {photo.description && (
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-3">
                     <div 
